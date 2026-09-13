@@ -184,10 +184,10 @@ async function main() {
     ['/', '首页'],
     ['/ranking', '排行榜'],
     ['/feed', '动态流'],
-    ['/feed/30001', '动态详情'],
+    ['/feed/1', '动态详情'],
     ['/search?q=React', '搜索结果'],
     ['/user/3', '个人主页'],
-    ['/video/10001', '长视频播放页'],
+    ['/video/1', '长视频播放页'],
     ['/shorts', '短视频沉浸页'],
     ['/login', '登录页'],
     ['/register', '注册页'],
@@ -379,13 +379,15 @@ async function main() {
 
   ws.close();
   chrome.kill('SIGKILL');
-  rmSync(userDataDir, { recursive: true, force: true });
+  await sleep(500);
+  try { rmSync(userDataDir, { recursive: true, force: true }); } catch { /* Windows may release the profile asynchronously */ }
   process.exit(failed.length > 0 ? 1 : 0);
 }
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error('驱动失败：', error);
   chrome.kill('SIGKILL');
-  rmSync(userDataDir, { recursive: true, force: true });
+  await sleep(500);
+  try { rmSync(userDataDir, { recursive: true, force: true }); } catch { /* best-effort temporary cleanup */ }
   process.exit(2);
 });

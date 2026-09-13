@@ -6,10 +6,18 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   data:
     redis:
+      repositories:
+        enabled: false
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD}
 app:
   auth:
     secure-cookie: true
-
+  storage:
+    mode: minio
+    endpoint: ${MINIO_ENDPOINT}
+    public-endpoint: ${MINIO_PUBLIC_ENDPOINT}
+    access-key: ${MINIO_USER}
+    secret-key: ${MINIO_PASSWORD}
+    bucket: ${MINIO_BUCKET:video-platform}

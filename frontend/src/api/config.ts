@@ -9,10 +9,10 @@ function bool(value: unknown, fallback: boolean): boolean {
 export const API_BASE_URL = (env.VITE_API_BASE_URL as string | undefined) ?? '';
 
 /**
- * Mock 数据层开关：默认在后端未就绪时开启（开发环境 true）。
- * 生产构建若未显式配置 VITE_USE_MOCK，则默认关闭，直连真实后端。
+ * Mock 数据层只在显式配置 VITE_USE_MOCK=true 时开启。
+ * 默认通过 Vite/Nginx 的同源反代连接真实后端。
  */
-export const USE_MOCK = bool(env.VITE_USE_MOCK, env.DEV);
+export const USE_MOCK = bool(env.VITE_USE_MOCK, env.MODE === 'test');
 
 export const WS_URL =
   (env.VITE_WS_URL as string | undefined) ||

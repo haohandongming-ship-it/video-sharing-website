@@ -1,54 +1,47 @@
 # 光影 · 视频分享平台
 
-本仓库由两部分组成：
-
-```
-.
-├── frontend/            # 前端工程（React 19 + Vite 6 + TS + Tailwind 4）
-├── video-website.md     # 《视频分享网站 · 项目开发文档 v2.0》—— 全栈需求与设计依据
-└── LICENSE
-```
+全栈视频分享平台，包含 React 前端、Spring Boot 后端、Flyway 数据库迁移、Redis 会话、对象存储和实时通信。
 
 ## 快速开始
 
-```bash
-cd frontend
-pnpm install
-cp .env.example .env      # 默认 VITE_USE_MOCK=true，无需后端即可完整体验
-pnpm dev                  # http://localhost:5173
+开发环境可以直接运行 H2 + 本地文件存储：
+
+```powershell
+cd backend
+mvn spring-boot:run
 ```
 
-后端就绪后，把 `frontend/.env` 中 `VITE_USE_MOCK` 改为 `false` 并配置
-`VITE_API_BASE_URL` / `VITE_PROXY_TARGET`，前端会自动关闭 Mock 适配层并直连真实接口。
+另开终端启动前端（默认连接真实后端）：
 
-### 演示账号（Mock 环境，密码统一 `123456`，短信验证码 `123456`）
+```powershell
+cd frontend
+npm exec --yes pnpm@10.18.3 -- install --frozen-lockfile
+Copy-Item .env.example .env
+npm exec --yes pnpm@10.18.3 -- dev
+```
 
-| 账号 | 角色 | 可验证的能力 |
-| --- | --- | --- |
-| `admin` | 管理员 | 数据概览、审核 / 举报处理、用户与角色管理、系统配置、操作日志 |
-| `moderator` | 审核员 | 审核队列、举报处理（同时保留普通用户全部权限） |
-| `laowang` | 创作者（已实名） | 上传、创作者中心数据看板、下载授权 |
-| `newbie` | 新用户 | 先审后发策略（新用户内容需审核通过后发布） |
+访问 `http://localhost:5173`。演示账号密码统一为 `123456`：`admin`、`moderator`、`laowang`、`newbie`。
+如果只想离线体验，可将 `frontend/.env` 中的 `VITE_USE_MOCK` 显式改为 `true`。
 
-登录页提供「演示账号快捷登录」，一键切换角色体验权限差异。
+## 生产依赖
 
-## 文档索引
+```powershell
+docker compose --env-file .env up --build
+```
 
-| 文档 | 位置 | 内容 |
-| --- | --- | --- |
-| 项目开发文档 v2.0 | [`video-website.md`](./video-website.md) | 需求、架构、数据库、API、UI/UX 规范、合规与验收标准 |
-| 前端说明 | [`frontend/README.md`](./frontend/README.md) | 启动方式、目录结构、关键实现说明、质量门禁 |
-| 前端开发规范 | [`frontend/docs/FRONTEND_CONVENTIONS.md`](./frontend/docs/FRONTEND_CONVENTIONS.md) | 设计令牌、组件清单、数据层约定与验收要求 |
+复制 `.env.example` 为根目录 `.env`，并为 MySQL、Redis、MinIO、JWT RS256 密钥、数据加密密钥和本地上传签名密钥设置强随机值。后端生产 profile 会执行 Flyway 迁移 `V1`–`V4`，提供 REST、Swagger、SSE 榜单和 STOMP WebSocket 通道。
 
 ## 质量门禁
 
-在 `frontend/` 目录下执行：
-
-```bash
-pnpm verify           # typecheck + lint + test（140 项）+ build
-pnpm coverage         # 覆盖率报告（阈值未达标即失败）
-pnpm verify:browser   # 浏览器端到端验收 30 项（需先 pnpm dev）
-pnpm verify:upload -- /path/to/video.mp4   # 上传链路验收 11 项
+```powershell
+cd backend; mvn test
+cd frontend; npm exec --yes pnpm@10.18.3 -- verify
+node scripts/cdp-check.mjs http://localhost:5173
 ```
 
-验收入口与 Mock 边界等实现细节见 [`frontend/README.md`](./frontend/README.md)。
+## 文档
+
+- [项目开发文档](./video-website.md)
+- [后端说明](./backend/README.md)
+- [前端说明](./frontend/README.md)
+- [前端开发规范](./frontend/docs/FRONTEND_CONVENTIONS.md)

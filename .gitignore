@@ -1,0 +1,10 @@
+.env
+.idea/
+.vscode/
+backend/target/
+backend/data/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+*.log
+*.tsbuildinfo

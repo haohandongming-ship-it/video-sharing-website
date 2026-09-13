@@ -1,0 +1,181 @@
+ALTER TABLE users ADD COLUMN phone VARCHAR(20);
+ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512);
+ALTER TABLE users ADD COLUMN bio VARCHAR(500);
+ALTER TABLE users ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE users ADD COLUMN last_login_at TIMESTAMP;
+CREATE UNIQUE INDEX uk_users_phone ON users(phone);
+
+ALTER TABLE videos ADD COLUMN review_note VARCHAR(1000);
+
+CREATE TABLE creator_profiles (
+  user_id BIGINT PRIMARY KEY,
+  real_name_encrypted VARCHAR(512),
+  id_card_hash CHAR(64),
+  auth_status VARCHAR(16) NOT NULL DEFAULT 'NONE',
+  trust_score INT NOT NULL DEFAULT 0,
+  certified_at TIMESTAMP,
+  CONSTRAINT fk_creator_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE TABLE oauth_accounts (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  provider VARCHAR(16) NOT NULL,
+  provider_uid VARCHAR(128) NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(provider, provider_uid),
+  CONSTRAINT fk_oauth_user FOREIGN KEY (user_id) REFERENCES users(id)
+);
+CREATE TABLE subscriptions (
+  user_id BIGINT NOT NULL,
+  target_type VARCHAR(16) NOT NULL,
+  target_id BIGINT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id,target_type,target_id)
+);
+CREATE TABLE folders (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  name VARCHAR(64) NOT NULL,
+  visibility VARCHAR(16) NOT NULL DEFAULT 'PRIVATE',
+  system_type VARCHAR(20),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_folder_user FOREIGN KEY(user_id) REFERENCES users(id)
+);
+ALTER TABLE favorites ADD COLUMN folder_id BIGINT;
+CREATE TABLE playlists (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  description VARCHAR(500),
+  visibility VARCHAR(16) NOT NULL DEFAULT 'PUBLIC',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_playlist_user FOREIGN KEY(user_id) REFERENCES users(id)
+);
+CREATE TABLE playlist_videos (
+  playlist_id BIGINT NOT NULL,
+  video_id BIGINT NOT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  added_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(playlist_id,video_id)
+);
+CREATE TABLE tags (id BIGINT AUTO_INCREMENT PRIMARY KEY, tag_name VARCHAR(64) NOT NULL UNIQUE);
+CREATE TABLE video_tags (video_id BIGINT NOT NULL,tag_id BIGINT NOT NULL,PRIMARY KEY(video_id,tag_id));
+CREATE TABLE play_records (
+  user_id BIGINT NOT NULL,
+  video_id BIGINT NOT NULL,
+  progress INT NOT NULL DEFAULT 0,
+  finished BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY(user_id,video_id)
+);
+CREATE TABLE topics (id BIGINT AUTO_INCREMENT PRIMARY KEY,name VARCHAR(80) NOT NULL UNIQUE,description VARCHAR(500),view_count BIGINT NOT NULL DEFAULT 0);
+CREATE TABLE feeds (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  content VARCHAR(2000) NOT NULL,
+  type VARCHAR(16) NOT NULL DEFAULT 'ORIGINAL',
+  repost_of_id BIGINT,
+  topic_id BIGINT,
+  like_count BIGINT NOT NULL DEFAULT 0,
+  comment_count BIGINT NOT NULL DEFAULT 0,
+  repost_count BIGINT NOT NULL DEFAULT 0,
+  status VARCHAR(16) NOT NULL DEFAULT 'VISIBLE',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_feed_user FOREIGN KEY(user_id) REFERENCES users(id)
+);
+CREATE INDEX idx_feed_user_time ON feeds(user_id,created_at);
+CREATE TABLE feed_media (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  feed_id BIGINT NOT NULL,
+  media_type VARCHAR(16) NOT NULL,
+  url VARCHAR(512) NOT NULL,
+  thumb_url VARCHAR(512),
+  video_id BIGINT,
+  sort_order INT NOT NULL DEFAULT 0,
+  CONSTRAINT fk_media_feed FOREIGN KEY(feed_id) REFERENCES feeds(id)
+);
+CREATE TABLE feed_comments (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  feed_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  content VARCHAR(1000) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'VISIBLE',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE notifications (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  actor_id BIGINT,
+  type VARCHAR(24) NOT NULL,
+  title VARCHAR(120) NOT NULL,
+  content VARCHAR(1000) NOT NULL,
+  target_type VARCHAR(16),
+  target_id BIGINT,
+  is_read BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_notification_unread ON notifications(user_id,is_read,created_at);
+CREATE TABLE conversations (id BIGINT AUTO_INCREMENT PRIMARY KEY,user_a_id BIGINT NOT NULL,user_b_id BIGINT NOT NULL,updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(user_a_id,user_b_id));
+CREATE TABLE direct_messages (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  conversation_id BIGINT NOT NULL,
+  sender_id BIGINT NOT NULL,
+  content VARCHAR(2000) NOT NULL,
+  attachment_type VARCHAR(16),
+  attachment_url VARCHAR(512),
+  attachment_video_id BIGINT,
+  is_read BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX idx_message_conversation_time ON direct_messages(conversation_id,created_at);
+CREATE TABLE upload_sessions (
+  id VARCHAR(80) PRIMARY KEY,
+  user_id BIGINT NOT NULL,
+  sha256 CHAR(64) NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_size BIGINT NOT NULL,
+  part_size INT NOT NULL,
+  video_type VARCHAR(16) NOT NULL,
+  title VARCHAR(200) NOT NULL,
+  description VARCHAR(5000),
+  category_id BIGINT NOT NULL,
+  visibility VARCHAR(16) NOT NULL DEFAULT 'PUBLIC',
+  status VARCHAR(20) NOT NULL DEFAULT 'UPLOADING',
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE upload_parts (upload_id VARCHAR(80) NOT NULL,part_number INT NOT NULL,etag VARCHAR(128),size_bytes BIGINT NOT NULL DEFAULT 0,uploaded_at TIMESTAMP,PRIMARY KEY(upload_id,part_number));
+CREATE TABLE transcode_tasks (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  video_id BIGINT NOT NULL,
+  quality VARCHAR(16) NOT NULL,
+  status VARCHAR(16) NOT NULL DEFAULT 'QUEUED',
+  progress INT NOT NULL DEFAULT 0,
+  error_msg VARCHAR(1000),
+  retry_count INT NOT NULL DEFAULT 0,
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE video_reviews (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  video_id BIGINT NOT NULL,
+  machine_result VARCHAR(16) NOT NULL DEFAULT 'PASS',
+  machine_labels VARCHAR(1000),
+  risk_level VARCHAR(16) NOT NULL DEFAULT 'LOW',
+  status VARCHAR(16) NOT NULL DEFAULT 'PENDING',
+  reviewer_id BIGINT,
+  review_note VARCHAR(1000),
+  submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at TIMESTAMP
+);
+ALTER TABLE reports ADD COLUMN evidence_urls VARCHAR(4000);
+ALTER TABLE reports ADD COLUMN target_snapshot VARCHAR(2000);
+ALTER TABLE reports ADD COLUMN priority INT NOT NULL DEFAULT 0;
+ALTER TABLE reports ADD COLUMN handler_id BIGINT;
+ALTER TABLE reports ADD COLUMN handled_at TIMESTAMP;
+ALTER TABLE reports ADD COLUMN handle_note VARCHAR(1000);
+CREATE TABLE download_records (id BIGINT AUTO_INCREMENT PRIMARY KEY,user_id BIGINT NOT NULL,video_id BIGINT NOT NULL,quality VARCHAR(16) NOT NULL,created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE admin_audit_log (id BIGINT AUTO_INCREMENT PRIMARY KEY,operator_id BIGINT NOT NULL,action VARCHAR(80) NOT NULL,target_type VARCHAR(32) NOT NULL,target_id BIGINT NOT NULL,detail VARCHAR(4000),created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX idx_audit_time ON admin_audit_log(created_at);
+CREATE TABLE sms_send_logs (id BIGINT AUTO_INCREMENT PRIMARY KEY,phone_hash CHAR(64) NOT NULL,ip VARCHAR(64) NOT NULL,scene VARCHAR(32) NOT NULL,created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE platform_settings (setting_key VARCHAR(100) PRIMARY KEY,setting_value VARCHAR(4000) NOT NULL,updated_by BIGINT,updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP);

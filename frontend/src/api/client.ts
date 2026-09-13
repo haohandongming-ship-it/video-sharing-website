@@ -118,7 +118,13 @@ async function execute<T>(path: string, options: RequestOptions = {}): Promise<T
   headers.set('Accept', 'application/json');
   // CSRF 双重防御：自定义头校验（文档 13.1）
   headers.set('X-Requested-With', 'XMLHttpRequest');
-  if (body !== undefined && !(body instanceof FormData)) {
+  const rawBody =
+    body instanceof FormData ||
+    body instanceof Blob ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body) ||
+    body instanceof URLSearchParams;
+  if (body !== undefined && !rawBody) {
     headers.set('Content-Type', 'application/json');
   }
   if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -138,7 +144,7 @@ async function execute<T>(path: string, options: RequestOptions = {}): Promise<T
     signal,
     // Refresh Token 走 httpOnly Cookie，跨域场景必须携带凭证
     credentials: 'include',
-    body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
+    body: body === undefined ? undefined : rawBody ? (body as BodyInit) : JSON.stringify(body),
   };
 
   let response: Response;

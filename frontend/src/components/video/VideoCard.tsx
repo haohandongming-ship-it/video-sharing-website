@@ -4,7 +4,7 @@ import { Clock3, Eye, ListVideo, Play } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { formatCount, formatDuration, formatRelative } from '@/lib/format';
 import type { VideoSummary } from '@/api/types';
-import { Avatar } from '@/components/ui';
+import { Avatar } from '@/components/ui/Avatar';
 import { watchedPercent } from '@/stores/playerStore';
 
 export type VideoCardLayout = 'grid' | 'row' | 'compact' | 'poster';

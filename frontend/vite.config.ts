@@ -10,7 +10,7 @@ export default defineConfig(({ mode }) => {
    * Mock 模式（VITE_USE_MOCK=true）下不启用 /api 代理：
    * 请求由 src/mocks 在浏览器端拦截，若仍配置代理会被 dev server 抢先转发到未启动的后端，导致 500。
    */
-  const useMock = env.VITE_USE_MOCK === 'true' || (env.VITE_USE_MOCK !== 'false' && mode === 'development');
+  const useMock = env.VITE_USE_MOCK === 'true';
 
   return {
     plugins: [react(), tailwindcss()],
@@ -34,8 +34,7 @@ export default defineConfig(({ mode }) => {
       rollupOptions: {
         output: {
           manualChunks: {
-            react: ['react', 'react-dom', 'react-router-dom'],
-            query: ['@tanstack/react-query', '@tanstack/react-virtual'],
+            vendor: ['react', 'react-dom', 'react-router-dom', '@tanstack/react-query', '@tanstack/react-virtual'],
             motion: ['framer-motion'],
             media: ['hls.js'],
             realtime: ['@stomp/stompjs'],

@@ -1,4 +1,8 @@
 spring:
+  autoconfigure:
+    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+  profiles:
+    default: dev
   application:
     name: video-platform
   datasource:
@@ -14,6 +18,8 @@ spring:
     enabled: true
   data:
     redis:
+      repositories:
+        enabled: false
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
@@ -22,11 +28,25 @@ management:
     web:
       exposure:
         include: health,info
+  health:
+    redis:
+      enabled: false
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
 app:
+  security:
+    data-key-base64: ${DATA_ENCRYPTION_KEY_BASE64:}
   auth:
     issuer: ${JWT_ISSUER:video-platform}
     audience: ${JWT_AUDIENCE:video-web}
     access-ttl-seconds: 900
     refresh-ttl-seconds: 604800
     secure-cookie: ${AUTH_SECURE_COOKIE:false}
-
+    private-key-base64: ${JWT_PRIVATE_KEY_BASE64:}
+    public-key-base64: ${JWT_PUBLIC_KEY_BASE64:}
+  storage:
+    mode: ${STORAGE_MODE:local}
+    local-root: ${STORAGE_LOCAL_ROOT:./data}
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:8080}
+    signing-secret: ${STORAGE_SIGNING_SECRET:}

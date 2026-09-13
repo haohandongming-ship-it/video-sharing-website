@@ -26,6 +26,7 @@ import { useUiStore } from '@/stores/uiStore';
 import { Avatar, Badge, Button, Dropdown, IconButton, SearchInput } from '@/components/ui';
 import { NotificationPanel } from '@/components/layout/NotificationPanel';
 import { HOT_LINKS, PRIMARY_NAV, SECONDARY_NAV } from '@/components/layout/navItems';
+import { USE_MOCK } from '@/api/config';
 
 export function TopNav() {
   const location = useLocation();
@@ -337,7 +338,9 @@ export function SideNav({ collapsed, onNavigate }: { collapsed?: boolean; onNavi
       {!collapsed && (
         <div className="mt-4 rounded-card bg-surface-2 p-3">
           <p className="text-[11px] leading-relaxed text-fg-muted">
-            当前为演示数据环境，前端已内置 Mock 适配层。上传、转码、审核等链路可完整走通。
+            {USE_MOCK
+              ? '当前为演示数据环境，前端已内置 Mock 适配层。'
+              : '已连接真实后端，账号与内容变更会持久化保存。'}
           </p>
           {isLogin && (
             <p className="mt-2 text-[11px] text-fg-subtle">

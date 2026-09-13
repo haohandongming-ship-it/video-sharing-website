@@ -9,8 +9,9 @@
  */
 import { Client, type IMessage } from '@stomp/stompjs';
 import { SSE_URL, USE_MOCK, WS_URL } from '@/api/config';
-import { mockPushNotification, mockRankingSsePayload } from '@/mocks';
+import { authBridge } from '@/api/authBridge';
 import type { AppNotification, SseRankingPayload } from '@/api/types';
+import { mockRankingSsePayload } from '@/mocks';
 
 export type RealtimeStatus = 'connecting' | 'online' | 'offline' | 'degraded';
 
@@ -34,9 +35,10 @@ export function subscribeNotifications(options: NotificationChannelOptions): Rea
     if (poller !== null || closed) return;
     onStatus?.('degraded');
     poller = window.setInterval(
-      () => {
+      async () => {
         if (closed) return;
         // 降级模式下以本地模拟推送代替服务端消息，保证演示链路完整
+        const { mockPushNotification } = await import('@/mocks');
         onNotification(mockPushNotification());
       },
       45_000,
@@ -57,7 +59,10 @@ export function subscribeNotifications(options: NotificationChannelOptions): Rea
   try {
     onStatus?.('connecting');
     client = new Client({
-      brokerURL: `${WS_URL}?token=${encodeURIComponent('')}`,
+      brokerURL: WS_URL,
+      connectHeaders: authBridge.getToken()
+        ? { Authorization: `Bearer ${authBridge.getToken()}` }
+        : {},
       reconnectDelay: 5_000,
       heartbeatIncoming: 10_000,
       heartbeatOutgoing: 10_000,

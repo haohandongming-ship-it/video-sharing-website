@@ -9,13 +9,13 @@
 在本目录（`frontend/`）下执行：
 
 ```bash
-pnpm install
-cp .env.example .env      # 默认 VITE_USE_MOCK=true，无需后端即可完整体验
-pnpm dev                  # http://localhost:5173
+npm exec --yes pnpm@10.18.3 -- install --frozen-lockfile
+Copy-Item .env.example .env
+npm exec --yes pnpm@10.18.3 -- dev                  # http://localhost:5173
 ```
 
-后端就绪后，把 `.env` 中 `VITE_USE_MOCK` 改为 `false` 并配置 `VITE_API_BASE_URL` / `VITE_PROXY_TARGET`，
-前端会自动关闭 Mock 适配层并直连真实接口（`src/api/client.ts` 的唯一分支点）。
+`.env.example` 默认 `VITE_USE_MOCK=false`，前端通过 Vite 代理连接本地后端；只有离线演示时才将其显式改为 `true`。
+也可配置 `VITE_API_BASE_URL` / `VITE_PROXY_TARGET` 连接其他环境（`src/api/client.ts` 是唯一请求分支点）。
 
 ### 演示账号（Mock 环境，密码统一 `123456`，短信验证码 `123456`）
 

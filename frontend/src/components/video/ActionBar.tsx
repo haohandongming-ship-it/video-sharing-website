@@ -141,7 +141,7 @@ export function ChannelCard({ author, subscribed, onSubscribe, className }: Chan
     <div className={cn('flex items-center gap-3', className)}>
       <Link to={`/user/${author.id}`} className="shrink-0">
         <img
-          src={author.avatar ?? ''}
+          src={author.avatar ?? undefined}
           alt={author.nickname}
           className="size-11 rounded-full bg-surface-3 object-cover"
           loading="lazy"
