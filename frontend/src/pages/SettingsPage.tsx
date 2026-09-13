@@ -668,12 +668,12 @@ export default function SettingsPage() {
                   <span className="text-xs font-medium text-fg-muted">默认音量：{Math.round(volume * 100)}%</span>
                   <input
                     type="range"
+                    className="range-control w-full accent-[var(--c-accent)]"
                     min={0}
                     max={100}
                     step={5}
                     value={Math.round(volume * 100)}
                     aria-label="默认音量"
-                    className="h-1.5 w-full cursor-pointer appearance-none rounded-pill bg-surface-3 accent-[var(--c-accent)]"
                     onChange={(event) => setVolume(Number(event.target.value) / 100)}
                   />
                   <span className="text-xs text-fg-subtle">音量设为 0 时进入静音状态。</span>

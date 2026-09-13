@@ -368,6 +368,7 @@ function MessageSection() {
   const thread = useMessages(selectedId);
   const send = useSendMessage(selectedId);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const sendingRef = useRef(false);
 
   const messages = useMemo(() => thread.data ?? [], [thread.data]);
   const selected = conversations.find((item) => item.id === selectedId) ?? null;
@@ -397,7 +398,8 @@ function MessageSection() {
 
   function handleSend() {
     const content = draft.trim();
-    if (!content || selectedId <= 0) return;
+    if (!content || selectedId <= 0 || sendingRef.current || send.isPending) return;
+    sendingRef.current = true;
     const key = queryKeys.messages.thread(selectedId);
     const previous = client.getQueryData<DirectMessage[]>(key);
     const optimistic: DirectMessage = {
@@ -413,7 +415,11 @@ function MessageSection() {
     if (previous) client.setQueryData<DirectMessage[]>(key, [...previous, optimistic]);
     setDraft('');
     send.mutate(content, {
+      onSuccess: () => {
+        sendingRef.current = false;
+      },
       onError: () => {
+        sendingRef.current = false;
         if (previous) client.setQueryData<DirectMessage[]>(key, previous);
         toast({ title: '消息发送失败，请稍后重试', tone: 'error' });
       },

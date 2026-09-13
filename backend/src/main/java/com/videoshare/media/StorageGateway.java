@@ -1,10 +1,12 @@
 package com.videoshare.media;
 import java.io.InputStream;import java.util.List;
 public interface StorageGateway {
+    record StoredObject(InputStream stream, long length, String contentType) { }
     String partUrl(String uploadId,int partNumber);
     default void putLocalPart(String uploadId,int partNumber,InputStream input,long size){throw new UnsupportedOperationException();}
     default void authorizePart(String uploadId,int partNumber,long expires,String signature){}
     String complete(String uploadId,String sha256,List<Integer> parts,long expectedSize,String fileName);
+    StoredObject open(String bucket, String objectKey, long offset, long length);
     void abort(String uploadId);
     String bucket();
     static void validateVideoHeader(byte[] header,String fileName){

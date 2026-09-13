@@ -13,5 +13,5 @@ public class FileAsset {
     @Column(nullable=false,length=16)private String status;
     @Column(name="created_at",nullable=false)private Instant createdAt;
     public void initialize(String sha,long size,String bucket,String key,String mime){this.sha256=sha;this.fileSize=size;this.bucket=bucket;this.objectKey=key;this.mimeType=mime;this.refCount=1;this.status="ACTIVE";this.createdAt=Instant.now();}
-    public Long getId(){return id;}public String getSha256(){return sha256;}public long getFileSize(){return fileSize;}public String getBucket(){return bucket;}public String getObjectKey(){return objectKey;}public void reference(){refCount++;}
+    public Long getId(){return id;}public String getSha256(){return sha256;}public long getFileSize(){return fileSize;}public String getBucket(){return bucket;}public String getObjectKey(){return objectKey;}public String getMimeType(){return mimeType;}public void reference(){refCount++;}
 }

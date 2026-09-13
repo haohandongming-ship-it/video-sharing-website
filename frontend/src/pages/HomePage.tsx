@@ -226,9 +226,21 @@ function CategoryRail({
 
   useEffect(() => {
     sync();
+    const node = scroller.current;
+    if (!node) return;
+    const observer = new ResizeObserver(sync);
+    observer.observe(node);
+    window.addEventListener('resize', sync);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', sync);
+    };
   }, [categories.length]);
 
-  const scrollBy = (delta: number) => scroller.current?.scrollBy({ left: delta, behavior: 'smooth' });
+  const scrollBy = (delta: number) => {
+    const node = scroller.current;
+    node?.scrollBy({ left: Math.max(160, Math.round(node.clientWidth * 0.75)) * Math.sign(delta), behavior: 'smooth' });
+  };
 
   if (categories.length === 0) return null;
 

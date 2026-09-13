@@ -357,6 +357,48 @@ input[type='range'].range-media {
   }
 }
 
+/* 表单滑块使用同一套轨道和拇指尺寸，避免不同浏览器下拇指偏移。 */
+input[type='range'].range-control {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 1.25rem;
+  background: transparent;
+  cursor: pointer;
+}
+input[type='range'].range-control::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--c-surface-3);
+}
+input[type='range'].range-control::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.3125rem;
+  border: 2px solid var(--c-canvas);
+  border-radius: 999px;
+  background: var(--c-brand);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+}
+input[type='range'].range-control::-moz-range-track {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: var(--c-surface-3);
+}
+input[type='range'].range-control::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid var(--c-canvas);
+  border-radius: 999px;
+  background: var(--c-brand);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+}
+input[type='range'].range-control:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--c-brand) 45%, transparent);
+  outline-offset: 3px;
+}
+
 .no-select {
   user-select: none;
   -webkit-user-select: none;

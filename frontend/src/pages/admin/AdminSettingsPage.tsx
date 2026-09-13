@@ -222,12 +222,12 @@ export default function AdminSettingsPage() {
             </div>
             <input
               type="range"
+              className="range-control w-full accent-[var(--c-accent)]"
               min={0}
               max={1}
               step={0.01}
               value={draft.review.highTrustSampleRate}
               aria-label="高信任用户抽检比例"
-              className="w-full accent-[var(--c-accent)]"
               onChange={(event) => setReview({ highTrustSampleRate: Number(event.target.value) })}
             />
           </div>

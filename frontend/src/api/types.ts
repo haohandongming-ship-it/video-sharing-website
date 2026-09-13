@@ -314,6 +314,8 @@ export interface UploadInitPayload {
   description?: string;
   visibility?: Visibility;
   tags?: string[];
+  /** 浏览器探测出的原始时长，转码完成后保留在视频记录中 */
+  duration?: number;
 }
 
 export interface UploadInitResult {

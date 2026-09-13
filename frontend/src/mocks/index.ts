@@ -45,6 +45,7 @@ import {
   messagesOf,
   now,
   profileOf,
+  registerUploadedVideo,
   session,
   toSummary,
   type MockUploadTask,
@@ -286,7 +287,12 @@ async function route(ctx: Ctx): Promise<Response> {
   if (pathname === '/api/v1/videos/recommend' && method === 'GET') {
     const page = Number(query.get('page') ?? 1);
     const pageSize = Number(query.get('pageSize') ?? 20);
-    const pool = publishedLong().sort((a, b) => (a.id % 13) - (b.id % 13));
+    const sort = query.get('sort') ?? 'recommend';
+    const pool = publishedLong();
+    if (sort === 'latest') pool.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt));
+    else if (sort === 'views') pool.sort((a, b) => b.stats.views - a.stats.views);
+    else if (sort === 'hot') pool.sort((a, b) => hotScore(b) - hotScore(a));
+    else pool.sort((a, b) => hotScore(b) * (b.id % 5 + 1) - hotScore(a) * (a.id % 5 + 1));
     return ok(pageOf(pool.map(toSummary), page, pageSize));
   }
 
@@ -782,6 +788,10 @@ async function route(ctx: Ctx): Promise<Response> {
       title: String(body.title ?? '未命名视频'),
       fileName: String(body.fileName ?? 'video.mp4'),
       fileSize,
+      description: String(body.description ?? ''),
+      categoryId: Number(body.categoryId ?? 1),
+      duration: Number(body.duration ?? 0),
+      visibility: (body.visibility as MockUploadTask['visibility']) ?? 'PUBLIC',
       videoType: (body.videoType as MockUploadTask['videoType']) ?? 'LONG',
       partSize,
       totalParts,
@@ -834,9 +844,12 @@ async function route(ctx: Ctx): Promise<Response> {
         task.transcodeProgress = Math.min(100, task.transcodeProgress + 7 + Math.floor(Math.random() * 9));
         if (task.transcodeProgress >= 100) {
           task.status = 'REVIEWING';
+          registerUploadedVideo(task, session.userId ?? 3);
         }
       } else if (task.status === 'REVIEWING' && Math.random() > 0.65) {
         task.status = 'PUBLISHED';
+        const record = registerUploadedVideo(task, session.userId ?? 3);
+        record.detail.status = 'PUBLISHED';
       }
     }
     const status =

@@ -108,7 +108,8 @@ export function useHlsPlayer({
 
     /** 按需加载 hls.js：首屏不下载媒体库（约 590KB），进入播放页才加载 */
     const setup = async () => {
-      if (/\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(source)) {
+      // 上传后的源文件通过 /source 提供，URL 没有扩展名；这类地址必须交给浏览器原生媒体管线，不能交给 hls.js。
+      if (/\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(source) || /\/api\/v1\/videos\/\d+\/source(?:[?#]|$)/i.test(source)) {
         attachNative();
         return;
       }

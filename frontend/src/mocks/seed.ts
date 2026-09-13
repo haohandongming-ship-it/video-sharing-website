@@ -485,12 +485,51 @@ function buildVideo(id: number, type: VideoType, index: number): MockVideoRecord
 }
 
 export const VIDEO_STORE: MockVideoRecord[] = [
-  ...Array.from({ length: 96 }, (_, i) => buildVideo(10_001 + i, 'LONG', i)),
-  ...Array.from({ length: 64 }, (_, i) => buildVideo(20_001 + i, 'SHORT', i)),
+  // 保留一小组稳定数据，覆盖首页、短视频、审核和播放流程即可。
+  ...Array.from({ length: 24 }, (_, i) => buildVideo(10_001 + i, 'LONG', i)),
+  ...Array.from({ length: 12 }, (_, i) => buildVideo(20_001 + i, 'SHORT', i)),
 ];
 
 export function findVideo(id: number): MockVideoRecord | undefined {
   return VIDEO_STORE.find((v) => v.detail.id === id);
+}
+
+/** 将上传任务登记到内存视频库，使审核通过后首页查询可以立即看到新内容。 */
+export function registerUploadedVideo(task: MockUploadTask, authorId: number): MockVideoRecord {
+  const existing = findVideo(task.videoId);
+  if (existing) return existing;
+  const category = CATEGORIES.find((item) => item.id === task.categoryId) ?? CATEGORIES[0];
+  const publishedAt = new Date().toISOString();
+  const duration = Math.max(1, task.duration ?? 0);
+  const qualities: VideoDetail['qualities'] = duration > 1800 ? ['360p', '480p', '720p'] : ['360p', '480p'];
+  const detail: VideoDetail = {
+    id: task.videoId,
+    videoType: task.videoType,
+    title: task.title,
+    coverUrl: coverUrl(task.videoId, category.name, task.videoType === 'SHORT' ? '9:16' : '16:9'),
+    duration,
+    category,
+    author: briefOf(authorId),
+    stats: { views: 0, likes: 0, dislikes: 0, comments: 0, favorites: 0, shares: 0, coins: 0 },
+    publishedAt,
+    status: 'REVIEWING',
+    visibility: task.visibility ?? 'PUBLIC',
+    description: task.description ?? '',
+    tags: [],
+    qualities,
+    hlsUrl: `/api/v1/videos/${task.videoId}/source`,
+    downloadEnabled: false,
+    createdAt: publishedAt,
+    updatedAt: publishedAt,
+    liked: false,
+    disliked: false,
+    favorited: false,
+    subscribed: false,
+    recommendReason: null,
+  };
+  const record: MockVideoRecord = { detail, transcode: { progress: 100, quality: qualities.at(-1) ?? '480p', status: 'SUCCESS' }, authorIsNew: authorId === 11 };
+  VIDEO_STORE.unshift(record);
+  return record;
 }
 
 export function toSummary(detail: VideoDetail): VideoSummary {
@@ -526,15 +565,12 @@ export const engagement = {
   favoriteFolders: [
     { id: 1, name: '默认收藏夹', count: 42, isDefault: true },
     { id: 2, name: '稍后观看', count: 17, isDefault: false },
-    { id: 3, name: '技术学习', count: 63, isDefault: false },
-    { id: 4, name: '做饭灵感', count: 28, isDefault: false },
   ],
   /** 观看历史：videoId → 进度秒 */
   history: new Map<number, number>(),
   playlists: [
     { id: 1, name: '架构系列', count: 12, cover: coverUrl(9001, '架构系列') },
     { id: 2, name: '睡前歌单', count: 30, cover: coverUrl(9002, '睡前歌单') },
-    { id: 3, name: '周末做饭', count: 18, cover: coverUrl(9003, '周末做饭') },
   ],
 };
 
@@ -618,7 +654,7 @@ const commentStore = new Map<number, MockComment[]>();
 export function commentsOf(videoId: number): MockComment[] {
   let list = commentStore.get(videoId);
   if (!list) {
-    list = buildComments(videoId, randInt(6, 28));
+    list = buildComments(videoId, randInt(3, 10));
     commentStore.set(videoId, list);
   }
   return list;
@@ -644,7 +680,7 @@ const FEED_TEMPLATES = [
   '整理了一下硬盘，翻出好多旧照片。',
 ];
 
-export const FEED_POSTS: FeedPost[] = Array.from({ length: 48 }, (_, i) => {
+export const FEED_POSTS: FeedPost[] = Array.from({ length: 12 }, (_, i) => {
   const id = 30_001 + i;
   const r = mulberry32(id * 22695477);
   const user = briefOf(SEED_USERS[Math.floor(r() * SEED_USERS.length)].id);
@@ -683,7 +719,7 @@ export const FEED_POSTS: FeedPost[] = Array.from({ length: 48 }, (_, i) => {
 
 export function feedCommentsOf(feedId: number): CommentItem[] {
   const r = mulberry32(feedId * 7919);
-  return Array.from({ length: randInt(3, 14) }, (_, i) => ({
+  return Array.from({ length: randInt(2, 6) }, (_, i) => ({
     id: feedId * 100 + i,
     videoId: feedId,
     parentId: null,
@@ -711,7 +747,7 @@ const NOTIFICATION_SEEDS: { type: AppNotification['type']; title: string; conten
   { type: 'SUBSCRIPTION', title: '订阅更新', content: '你订阅的分区「科技」有 3 条新内容。' },
 ];
 
-export const NOTIFICATIONS: AppNotification[] = Array.from({ length: 26 }, (_, i) => {
+export const NOTIFICATIONS: AppNotification[] = Array.from({ length: 10 }, (_, i) => {
   const seed = NOTIFICATION_SEEDS[i % NOTIFICATION_SEEDS.length];
   const actor = seed.type === 'SYSTEM' || seed.type === 'SUBSCRIPTION' ? null : briefOf(SEED_USERS[3 + (i % 8)].id);
   return {
@@ -727,7 +763,7 @@ export const NOTIFICATIONS: AppNotification[] = Array.from({ length: 26 }, (_, i
   } satisfies AppNotification;
 });
 
-export const CONVERSATIONS: Conversation[] = Array.from({ length: 8 }, (_, i) => {
+export const CONVERSATIONS: Conversation[] = Array.from({ length: 3 }, (_, i) => {
   const peer = briefOf(SEED_USERS[3 + i].id);
   return {
     id: 50_001 + i,
@@ -743,7 +779,7 @@ export function messagesOf(conversationId: number): DirectMessage[] {
   let list = dmStore.get(conversationId);
   if (!list) {
     const conv = CONVERSATIONS.find((c) => c.id === conversationId);
-    list = Array.from({ length: 10 }, (_, i) => ({
+    list = Array.from({ length: 6 }, (_, i) => ({
       id: conversationId * 100 + i,
       conversationId,
       senderId: i % 2 === 0 ? (conv?.peer.id ?? 3) : 3,
@@ -765,9 +801,9 @@ export function messagesOf(conversationId: number): DirectMessage[] {
 
 /* -------------------------------------------------------------- 管理后台 */
 
-export const REVIEW_TASKS: ReviewTask[] = Array.from({ length: 24 }, (_, i) => {
+export const REVIEW_TASKS: ReviewTask[] = Array.from({ length: 8 }, (_, i) => {
   const r = mulberry32(6001 + i * 131);
-  const video = VIDEO_STORE[i * 3].detail;
+  const video = VIDEO_STORE[(i * 3) % VIDEO_STORE.length].detail;
   return {
     id: 60_001 + i,
     video: toSummary(video),
@@ -782,9 +818,9 @@ export const REVIEW_TASKS: ReviewTask[] = Array.from({ length: 24 }, (_, i) => {
   } satisfies ReviewTask;
 });
 
-export const REPORT_TASKS: ReportTask[] = Array.from({ length: 18 }, (_, i) => {
+export const REPORT_TASKS: ReportTask[] = Array.from({ length: 8 }, (_, i) => {
   const r = mulberry32(7001 + i * 977);
-  const video = VIDEO_STORE[i * 5].detail;
+  const video = VIDEO_STORE[(i * 5) % VIDEO_STORE.length].detail;
   const targetType = pick(['VIDEO', 'COMMENT', 'FEED', 'USER'] as const);
   return {
     id: 70_001 + i,
@@ -825,27 +861,9 @@ export const ADMIN_USERS: AdminUserRow[] = [
     createdAt: daysAgo(30 + i * 9),
     lastLoginAt: hoursAgo(i * 3 + 1),
   })),
-  ...Array.from({ length: 26 }, (_, i) => {
-    const id = 200 + i;
-    const name = pick(['路过的风', '半糖不加冰', '凌晨三点', '南山有雨', '橘子汽水', '旧巷子', '云端漫步', '沉默的螺旋']);
-    return {
-      id,
-      username: `user${id}`,
-      nickname: `${name}${i}`,
-      avatar: avatarUrl(id, name),
-      email: `user${id}@example.com`,
-      phone: i % 3 === 0 ? null : `139${String(20_000_000 + i * 4321).slice(0, 8)}`,
-      role: 'USER' as const,
-      status: (i % 9 === 0 ? 'BANNED' : i % 13 === 0 ? 'DEACTIVATED' : 'ACTIVE') as AdminUserRow['status'],
-      certified: i % 4 === 0,
-      videoCount: i % 7,
-      createdAt: daysAgo(10 + i * 2),
-      lastLoginAt: i % 5 === 0 ? null : hoursAgo(i),
-    } satisfies AdminUserRow;
-  }),
 ];
 
-export const AUDIT_LOGS: AuditLogRow[] = Array.from({ length: 40 }, (_, i) => {
+export const AUDIT_LOGS: AuditLogRow[] = Array.from({ length: 12 }, (_, i) => {
   const r = mulberry32(8001 + i * 373);
   const action = pick([
     'APPROVE_VIDEO',
@@ -970,6 +988,10 @@ export interface MockUploadTask {
   title: string;
   fileName: string;
   fileSize: number;
+  description?: string;
+  categoryId?: number;
+  duration?: number;
+  visibility?: 'PUBLIC' | 'PRIVATE' | 'UNLISTED';
   videoType: VideoType;
   partSize: number;
   totalParts: number;

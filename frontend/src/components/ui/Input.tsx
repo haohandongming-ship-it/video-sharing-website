@@ -109,13 +109,15 @@ export interface SwitchProps {
 
 export function Switch({ checked, onChange, label, description, disabled, className, id }: SwitchProps) {
   return (
-    <label
-      htmlFor={id}
+    <div
       className={cn(
         'flex items-start justify-between gap-4',
         disabled ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
         className,
       )}
+      onClick={() => {
+        if (!disabled) onChange(!checked);
+      }}
     >
       {(label || description) && (
         <span className="min-w-0">
@@ -130,7 +132,10 @@ export function Switch({ checked, onChange, label, description, disabled, classN
         aria-checked={checked}
         aria-label={label}
         disabled={disabled}
-        onClick={() => onChange(!checked)}
+        onClick={(event) => {
+          event.stopPropagation();
+          onChange(!checked);
+        }}
         className={cn(
           'relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors duration-200',
           checked ? 'bg-accent' : 'bg-surface-3',
@@ -139,11 +144,11 @@ export function Switch({ checked, onChange, label, description, disabled, classN
         <span
           className={cn(
             'absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
-            checked ? 'translate-x-[22px]' : 'translate-x-0.5',
+            checked ? 'translate-x-5' : 'translate-x-0.5',
           )}
         />
       </button>
-    </label>
+    </div>
   );
 }
 

@@ -612,6 +612,9 @@ export function useDecideReview() {
       adminApi.decideReview(taskId, decision, note),
     onSuccess: (_d, vars) => {
       client.invalidateQueries({ queryKey: ['admin', 'reviews'] });
+      // 审核通过后视频会从 REVIEWING 变为 PUBLISHED，立即刷新首页和创作者列表。
+      client.invalidateQueries({ queryKey: ['videos'] });
+      client.invalidateQueries({ queryKey: ['creator', 'videos'] });
       useUiStore.getState().toast({
         title: vars.decision === 'APPROVE' ? '已通过审核' : '已驳回并通知作者',
         tone: vars.decision === 'APPROVE' ? 'success' : 'warning',

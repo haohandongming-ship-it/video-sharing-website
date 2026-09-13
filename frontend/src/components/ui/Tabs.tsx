@@ -32,7 +32,7 @@ export function Tabs<T extends string>({
     return (
       <div
         role="tablist"
-        className={cn('inline-flex items-center gap-1 rounded-pill bg-surface-2 p-1', className)}
+        className={cn('inline-flex max-w-full items-center gap-1 overflow-x-auto rounded-pill bg-surface-2 p-1 hide-scrollbar', className)}
       >
         {items.map((item) => (
           <button

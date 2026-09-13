@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import {
   Check,
@@ -255,6 +256,7 @@ function UploadGuidelines({ videoType }: { videoType: VideoType }) {
 /* ------------------------------------------------------------------ 页面 */
 
 export default function UploadPage() {
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
   const task = useUploadStore((s) => s.task);
   const setTask = useUploadStore((s) => s.setTask);
@@ -333,7 +335,11 @@ export default function UploadPage() {
       phase:
         transcodeVideoStatus === 'PUBLISHED' ? 'published' : transcodeVideoStatus === 'REJECTED' ? 'failed' : 'reviewing',
     });
-  }, [videoId, transcodeStatus, transcodeVideoStatus, patchTask]);
+    if (transcodeVideoStatus === 'PUBLISHED') {
+      queryClient.invalidateQueries({ queryKey: ['videos'] });
+      queryClient.invalidateQueries({ queryKey: ['creator', 'videos'] });
+    }
+  }, [videoId, transcodeStatus, transcodeVideoStatus, patchTask, queryClient]);
 
   /* 归档到历史，最多保留 20 条 */
   useEffect(() => {
@@ -558,6 +564,7 @@ export default function UploadPage() {
         description: description.trim(),
         visibility,
         tags,
+        duration: Math.max(0, Math.round(meta?.duration ?? 0)),
       });
       if (cancelledRef.current) return;
 
@@ -846,13 +853,13 @@ export default function UploadPage() {
                   <input
                     id="cover-time"
                     type="range"
+                    className="range-control mt-1.5 w-full accent-[var(--c-accent)]"
                     min={0}
                     max={Math.max(1, Math.floor(meta?.duration ?? 1))}
                     step={1}
                     value={captureAt}
                     aria-label="封面截取时间点"
                     onChange={(event) => setCaptureAt(Number(event.target.value))}
-                    className="mt-1.5 w-full accent-[var(--c-accent)]"
                   />
                   <Button
                     className="mt-3"
