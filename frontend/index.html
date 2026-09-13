@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" class="dark-safe">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#FAFAFA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0F0F0F" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="视频分享平台 —— 长视频、短视频与动态信息流" />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>光影 · 视频分享平台</title>
+    <script>
+      // 主题预置：在首屏渲染前确定暗色模式，避免亮暗切换闪烁（验收标准 19.4）
+      (function () {
+        try {
+          var raw = localStorage.getItem('vs-ui-preference');
+          var theme = raw ? JSON.parse(raw).state.theme : 'system';
+          var dark = theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.classList.toggle('dark', dark);
+          root.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

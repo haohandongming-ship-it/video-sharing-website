@@ -1,0 +1,376 @@
+@import 'tailwindcss';
+
+/* ==========================================================================
+   设计语言（项目文档 12.1）：扁平 + 微质感，拒绝模板化紫蓝渐变与玻璃拟态
+   亮色/暗色通过 .dark 类切换，首屏由 index.html 内联脚本预置避免闪烁
+   ========================================================================== */
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --c-canvas: #fafafa;
+  --c-surface: #ffffff;
+  --c-surface-2: #f4f4f5;
+  --c-surface-3: #ececee;
+  --c-line: #e5e5e5;
+  --c-fg: #0f0f0f;
+  --c-fg-muted: #606060;
+  --c-fg-subtle: #8a8a8a;
+  --c-brand: #ff4d4f;
+  --c-brand-hover: #f03a3d;
+  --c-brand-soft: rgba(255, 77, 79, 0.1);
+  --c-accent: #2b5aed;
+  --c-accent-hover: #1f4bd8;
+  --c-accent-soft: rgba(43, 90, 237, 0.1);
+  --c-success: #16a34a;
+  --c-success-soft: rgba(22, 163, 74, 0.12);
+  --c-warning: #d97706;
+  --c-warning-soft: rgba(217, 119, 6, 0.12);
+  --c-overlay: rgba(15, 15, 15, 0.55);
+  --c-skeleton: #e8e8ea;
+  --c-skeleton-sheen: rgba(255, 255, 255, 0.65);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-raised: 0 6px 16px rgba(0, 0, 0, 0.12);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.16);
+}
+
+.dark {
+  --c-canvas: #0f0f0f;
+  --c-surface: #1a1a1a;
+  --c-surface-2: #232323;
+  --c-surface-3: #2e2e2e;
+  --c-line: #2a2a2a;
+  --c-fg: #f1f1f1;
+  --c-fg-muted: #aaaaaa;
+  --c-fg-subtle: #8c8c8c;
+  --c-brand: #ff6b6d;
+  --c-brand-hover: #ff8587;
+  --c-brand-soft: rgba(255, 107, 109, 0.16);
+  --c-accent: #4d7bff;
+  --c-accent-hover: #6d92ff;
+  --c-accent-soft: rgba(77, 123, 255, 0.16);
+  --c-success: #4ade80;
+  --c-success-soft: rgba(74, 222, 128, 0.16);
+  --c-warning: #fbbf24;
+  --c-warning-soft: rgba(251, 191, 36, 0.16);
+  --c-overlay: rgba(0, 0, 0, 0.66);
+  --c-skeleton: #262626;
+  --c-skeleton-sheen: rgba(255, 255, 255, 0.06);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-raised: 0 6px 16px rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.6);
+}
+
+@theme inline {
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-surface-3: var(--c-surface-3);
+  --color-line: var(--c-line);
+  --color-fg: var(--c-fg);
+  --color-fg-muted: var(--c-fg-muted);
+  --color-fg-subtle: var(--c-fg-subtle);
+  --color-brand: var(--c-brand);
+  --color-brand-hover: var(--c-brand-hover);
+  --color-brand-soft: var(--c-brand-soft);
+  --color-accent: var(--c-accent);
+  --color-accent-hover: var(--c-accent-hover);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-success: var(--c-success);
+  --color-success-soft: var(--c-success-soft);
+  --color-warning: var(--c-warning);
+  --color-warning-soft: var(--c-warning-soft);
+  --color-overlay: var(--c-overlay);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans SC',
+    'Microsoft YaHei', sans-serif;
+
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --radius-pill: 999px;
+
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-pop: var(--shadow-pop);
+
+  /* 动效曲线（文档 5.5） */
+  --ease-enter: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-exit: cubic-bezier(0.55, 0, 1, 0.45);
+  --ease-springy: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --animate-shimmer: shimmer 1.5s linear infinite;
+  --animate-fade-in: fade-in 0.25s var(--ease-enter) both;
+  --animate-rise-in: rise-in 0.25s var(--ease-enter) both;
+  --animate-bounce-like: bounce-like 0.3s var(--ease-springy);
+  --animate-heart-burst: heart-burst 0.6s var(--ease-enter) forwards;
+  --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
+  --animate-spin-slow: spin 1.2s linear infinite;
+
+  @keyframes shimmer {
+    0% {
+      background-position: -180% 0;
+    }
+    100% {
+      background-position: 180% 0;
+    }
+  }
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  @keyframes bounce-like {
+    0% {
+      transform: scale(1);
+    }
+    45% {
+      transform: scale(1.3);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+  @keyframes heart-burst {
+    0% {
+      opacity: 0;
+      transform: scale(0) rotate(-12deg);
+    }
+    35% {
+      opacity: 1;
+      transform: scale(1.4) rotate(6deg);
+    }
+    70% {
+      opacity: 1;
+      transform: scale(0.8) rotate(0deg);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(1.15);
+    }
+  }
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.45;
+      transform: scale(0.82);
+    }
+  }
+}
+
+@layer base {
+  * {
+    border-color: var(--c-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scrollbar-gutter: stable;
+  }
+
+  body {
+    background-color: var(--c-canvas);
+    color: var(--c-fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior-y: none;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  button {
+    cursor: pointer;
+  }
+
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--c-accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--c-brand-soft);
+  }
+
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+
+  /* 滚动条：细、低调，不抢视觉 */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--c-fg-subtle) 34%, transparent);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--c-fg-subtle) 58%, transparent);
+    background-clip: content-box;
+  }
+
+  /* 无障碍：尊重系统「减弱动态效果」 */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ---------- 自定义工具类 ---------- */
+
+@utility card-surface {
+  background-color: var(--c-surface);
+  border: 1px solid var(--c-line);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+}
+
+@utility skeleton-sheen {
+  background-color: var(--c-skeleton);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--c-skeleton-sheen) 45%,
+    transparent 90%
+  );
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  animation: var(--animate-shimmer);
+}
+
+@utility hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+}
+
+@utility scroll-shadow-x {
+  overflow-x: auto;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility tap-highlight-none {
+  -webkit-tap-highlight-color: transparent;
+}
+
+@utility text-shadow-media {
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+@utility safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@utility safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* 播放器进度条等使用的原生 range 样式重置 */
+input[type='range'].range-media {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+
+  &::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.28);
+  }
+  &::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    margin-top: -4px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  }
+  &::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.28);
+  }
+  &::-moz-range-thumb {
+    width: 12px;
+    height: 12px;
+    border: none;
+    border-radius: 999px;
+    background: #fff;
+  }
+}
+
+.no-select {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* 评论乐观插入高亮（文档 12.3：bg 淡黄 → 白 800ms） */
+@keyframes comment-highlight {
+  from {
+    background-color: rgba(250, 204, 21, 0.28);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+.comment-highlight {
+  animation: comment-highlight 0.8s var(--ease-enter);
+}

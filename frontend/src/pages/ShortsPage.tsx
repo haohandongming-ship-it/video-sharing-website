@@ -1,0 +1,590 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { AnimatePresence, motion } from 'framer-motion';
+import {
+  ArrowLeft,
+  Bookmark,
+  Heart,
+  MessageCircle,
+  Music2,
+  Play,
+  Share2,
+  Volume2,
+  VolumeX,
+} from 'lucide-react';
+import { cn } from '@/lib/cn';
+import { formatCount } from '@/lib/format';
+import { useComments, useShortsFeed } from '@/hooks/useApi';
+import { videoApi } from '@/api/videos';
+import { useAuthStore } from '@/stores/authStore';
+import { useUiStore } from '@/stores/uiStore';
+import { Avatar, Badge, Button, EmptyState, ErrorState, Spinner } from '@/components/ui';
+import { ShortVideoPlayer } from '@/components/video/VideoPlayer';
+import { ShareDialog } from '@/components/video/ShareDialog';
+import { ReportDialog } from '@/components/video/ReportDialog';
+import type { VideoSummary } from '@/api/types';
+
+/** 触摸/鼠标滑动的判定阈值与速度阈值（文档 5.6：指针拖拽 + 速度检测） */
+const SWIPE_DISTANCE = 60;
+const SWIPE_VELOCITY = 0.45;
+/** 长按 2 倍速 */
+const LONG_PRESS_MS = 320;
+
+export default function ShortsPage() {
+  const [params, setParams] = useSearchParams();
+  const initialId = params.get('v') ? Number(params.get('v')) : null;
+
+  const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage } = useShortsFeed();
+  const videos = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data]);
+
+  const [index, setIndex] = useState(0);
+  const [muted, setMuted] = useState(true);
+  const [paused, setPaused] = useState(false);
+  const [direction, setDirection] = useState<1 | -1>(1);
+  const [hearts, setHearts] = useState<{ id: number; x: number; y: number }[]>([]);
+  const [fastForward, setFastForward] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [hint, setHint] = useState<string | null>(null);
+  const [localLikes, setLocalLikes] = useState<Record<number, boolean>>({});
+  const setLocalLike = (videoId: number, active: boolean) =>
+    setLocalLikes((prev) => ({ ...prev, [videoId]: active }));
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const dragStart = useRef<{ y: number; t: number } | null>(null);
+  const longPressTimer = useRef<number | null>(null);
+  const lastTap = useRef(0);
+  const viewedRef = useRef<Set<number>>(new Set());
+
+  const isLogin = useAuthStore((s) => s.status === 'authenticated');
+  const toast = useUiStore((s) => s.toast);
+
+  const current: VideoSummary | undefined = videos[index];
+
+  /* 深链：?v=<id> 定位到指定短视频（渲染期同步，避免首帧闪动） */
+  const [deepLinkApplied, setDeepLinkApplied] = useState<number | null>(null);
+  if (initialId !== null && initialId !== deepLinkApplied && videos.length > 0) {
+    const found = videos.findIndex((v) => v.id === initialId);
+    setDeepLinkApplied(initialId);
+    if (found >= 0 && found !== index) setIndex(found);
+  }
+
+  const goTo = useCallback(
+    (next: number) => {
+      if (next < 0) {
+        toast({ title: '已经是第一个了', tone: 'info' });
+        return;
+      }
+      if (next >= videos.length) {
+        if (hasNextPage) void fetchNextPage();
+        else {
+          toast({ title: '已经看完了当前推荐', description: '稍后会有新的内容', tone: 'info' });
+          return;
+        }
+      }
+      setDirection(next > index ? 1 : -1);
+      setIndex(next);
+      setPaused(false);
+    },
+    [fetchNextPage, hasNextPage, index, toast, videos.length],
+  );
+
+  /* 播放计数：短视频观看 ≥1s 即计数（文档 11.3） */
+  useEffect(() => {
+    if (!current) return;
+    if (viewedRef.current.has(current.id)) return;
+    const timer = window.setTimeout(() => {
+      viewedRef.current.add(current.id);
+      void videoApi.reportView(current.id).catch(() => undefined);
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [current]);
+
+  /* URL 同步当前视频 */
+  useEffect(() => {
+    if (!current) return;
+    const next = new URLSearchParams(params);
+    if (next.get('v') !== String(current.id)) {
+      next.set('v', String(current.id));
+      setParams(next, { replace: true });
+    }
+  }, [current, params, setParams]);
+
+  /* 键盘：↑↓ / J K 切换，空格暂停，M 静音 */
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target && ['INPUT', 'TEXTAREA'].includes(target.tagName)) return;
+      switch (event.key) {
+        case 'ArrowDown':
+        case 'j':
+        case 'J':
+          event.preventDefault();
+          goTo(index + 1);
+          break;
+        case 'ArrowUp':
+        case 'k':
+        case 'K':
+          event.preventDefault();
+          goTo(index - 1);
+          break;
+        case ' ':
+          event.preventDefault();
+          setPaused((v) => !v);
+          break;
+        case 'm':
+        case 'M':
+          setMuted((v) => !v);
+          break;
+        default:
+          break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [goTo, index]);
+
+  /** 点赞：本地即时反馈 + 接口写入（失败静默，下一次拉取会纠正） */
+  const likeVideo = useCallback(
+    (videoId: number, active: boolean) => {
+      void videoApi
+        .like(videoId, active)
+        .then(() => {
+          setLocalLike(videoId, active);
+        })
+        .catch(() => undefined);
+    },
+    [],
+  );
+
+  /* 滚轮切换（桌面） */
+  const wheelLock = useRef(false);
+  const handleWheel = useCallback(
+    (event: React.WheelEvent) => {
+      if (wheelLock.current) return;
+      if (Math.abs(event.deltaY) < 24) return;
+      wheelLock.current = true;
+      window.setTimeout(() => {
+        wheelLock.current = false;
+      }, 420);
+      goTo(event.deltaY > 0 ? index + 1 : index - 1);
+    },
+    [goTo, index],
+  );
+
+  /* 指针拖拽：上滑下一个 / 下滑上一个（文档 5.6 手势控制） */
+  const onPointerDown = useCallback((event: React.PointerEvent) => {
+    dragStart.current = { y: event.clientY, t: Date.now() };
+    longPressTimer.current = window.setTimeout(() => {
+      setFastForward(true);
+      setHint('2x 快进中');
+    }, LONG_PRESS_MS);
+  }, []);
+
+  const onPointerMove = useCallback((event: React.PointerEvent) => {
+    const start = dragStart.current;
+    if (!start) return;
+    if (Math.abs(event.clientY - start.y) > 12) {
+      if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+      setFastForward(false);
+      setHint(null);
+    }
+  }, []);
+
+  const onPointerUp = useCallback(
+    (event: React.PointerEvent) => {
+      if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+      if (fastForward) {
+        setFastForward(false);
+        setHint(null);
+        dragStart.current = null;
+        return;
+      }
+      const start = dragStart.current;
+      dragStart.current = null;
+      if (!start) return;
+      const deltaY = event.clientY - start.y;
+      const elapsed = Math.max(1, Date.now() - start.t);
+      const velocity = Math.abs(deltaY) / elapsed;
+
+      if (Math.abs(deltaY) > SWIPE_DISTANCE && velocity > SWIPE_VELOCITY) {
+        goTo(deltaY < 0 ? index + 1 : index - 1);
+        return;
+      }
+
+      // 双击点赞（文档 4.2 / 12.3：心形粒子扩散）
+      const now = Date.now();
+      if (now - lastTap.current < 280) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        const x = rect ? event.clientX - rect.left : 0;
+        const y = rect ? event.clientY - rect.top : 0;
+        const id = now;
+        setHearts((prev) => [...prev, { id, x, y }]);
+        window.setTimeout(() => setHearts((prev) => prev.filter((h) => h.id !== id)), 700);
+        if (current && isLogin) likeVideo(current.id, true);
+        lastTap.current = 0;
+        return;
+      }
+      lastTap.current = now;
+    },
+    [current, fastForward, goTo, index, isLogin, likeVideo],
+  );
+
+
+  if (isLoading) {
+    return (
+      <div className="grid h-full place-items-center bg-black">
+        <Spinner className="text-white" label="正在加载短视频" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="grid h-full place-items-center bg-black px-6">
+        <ErrorState title="短视频加载失败" description="网络似乎不太稳定，请稍后重试。" onRetry={() => void refetch()} />
+      </div>
+    );
+  }
+
+  if (videos.length === 0) {
+    return (
+      <div className="grid h-full place-items-center bg-black px-6">
+        <EmptyState
+          title="还没有短视频"
+          description="成为第一个发布短视频的人，或者回到首页看看长视频。"
+          action={
+            <Link to="/">
+              <Button variant="primary" size="sm">
+                返回首页
+              </Button>
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative size-full overflow-hidden bg-black touch-none"
+      onWheel={handleWheel}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={() => {
+        if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+        dragStart.current = null;
+        setFastForward(false);
+        setHint(null);
+      }}
+    >
+      {/* 视频层 */}
+      <AnimatePresence initial={false} custom={direction}>
+        <motion.div
+          key={current?.id}
+          custom={direction}
+          initial={{ y: direction > 0 ? '100%' : '-100%', scale: 0.95 }}
+          animate={{ y: 0, scale: 1 }}
+          exit={{ y: direction > 0 ? '-28%' : '28%', scale: 0.95, opacity: 0.6 }}
+          transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute inset-0"
+        >
+          <ShortVideoPlayer
+            src={current?.hlsUrl ?? '/demo/hls/master.m3u8'}
+            poster={current?.coverUrl}
+            playing={!paused}
+            muted={muted}
+            onToggleMute={() => setMuted((v) => !v)}
+          />
+        </motion.div>
+      </AnimatePresence>
+
+      {/* 播放/暂停指示 */}
+      <AnimatePresence>
+        {paused && (
+          <motion.button
+            type="button"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            onClick={() => setPaused(false)}
+            aria-label="继续播放"
+            className="absolute inset-0 z-10 grid place-items-center bg-black/25"
+          >
+            <span className="grid size-16 place-items-center rounded-full bg-black/55 text-white">
+              <Play className="size-7 translate-x-[2px] fill-current" />
+            </span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
+      {/* 顶部返回与进度 */}
+      <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center gap-3 bg-gradient-to-b from-black/60 to-transparent p-4 safe-top">
+        <Link
+          to="/"
+          aria-label="返回首页"
+          className="pointer-events-auto grid size-9 place-items-center rounded-full bg-black/40 text-white backdrop-blur-sm"
+        >
+          <ArrowLeft className="size-5" />
+        </Link>
+        <span className="text-sm font-medium text-white/90">短视频</span>
+        <span className="pointer-events-auto ml-auto rounded-pill bg-black/40 px-2.5 py-1 text-[11px] text-white/85 backdrop-blur-sm">
+          {index + 1} / {videos.length}
+          {hasNextPage ? '+' : ''}
+        </span>
+      </div>
+
+      {/* 右侧互动栏（文档 4.2） */}
+      {current && (
+        <div className="absolute right-3 bottom-32 z-20 flex flex-col items-center gap-4 sm:right-5">
+          <Link to={`/user/${current.author.id}`} className="relative">
+            <Avatar src={current.author.avatar} name={current.author.nickname} size="lg" className="ring-2 ring-white/70" />
+          </Link>
+
+          <InteractionButton
+            icon={<Heart className={cn('size-7', (localLikes[current.id] ?? current.liked) && 'fill-current text-brand')} />}
+            label="点赞"
+            count={current.stats.likes + (localLikes[current.id] ? 1 : 0)}
+            active={Boolean(localLikes[current.id] ?? current.liked)}
+            onClick={() => {
+              if (!isLogin) {
+                toast({ title: '登录后即可点赞', tone: 'warning' });
+                return;
+              }
+              likeVideo(current.id, !(localLikes[current.id] ?? current.liked));
+            }}
+          />
+          <InteractionButton
+            icon={<MessageCircle className="size-7" />}
+            label="评论"
+            count={current.stats.comments}
+            onClick={() => setCommentsOpen(true)}
+          />
+          <InteractionButton
+            icon={<Bookmark className={cn('size-7', current.favorited && 'fill-current text-brand')} />}
+            label="收藏"
+            count={current.stats.favorites}
+            active={current.favorited}
+            onClick={() => {
+              if (!isLogin) {
+                toast({ title: '登录后即可收藏', tone: 'warning' });
+                return;
+              }
+              void videoApi.favorite(current.id, !current.favorited).then(() => toast({ title: '已更新收藏', tone: 'success' }));
+            }}
+          />
+          <InteractionButton icon={<Share2 className="size-7" />} label="分享" onClick={() => setShareOpen(true)} />
+          <InteractionButton
+            icon={muted ? <VolumeX className="size-6" /> : <Volume2 className="size-6" />}
+            label={muted ? '取消静音' : '静音'}
+            onClick={() => setMuted((v) => !v)}
+          />
+          <button
+            type="button"
+            aria-label="举报"
+            onClick={() => setReportOpen(true)}
+            className="text-[10px] text-white/70 hover:text-white"
+          >
+            举报
+          </button>
+        </div>
+      )}
+
+      {/* 底部信息区 */}
+      {current && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pb-6 safe-bottom">
+          <div className="max-w-[76%]">
+            <Link to={`/user/${current.author.id}`} className="pointer-events-auto flex items-center gap-2">
+              <span className="text-sm font-semibold text-white">@{current.author.nickname}</span>
+              {current.author.certified && <Badge tone="brand">认证</Badge>}
+            </Link>
+            <p className="mt-2 line-clamp-3 text-[13px] leading-relaxed text-white/92">{current.title}</p>
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-white/75">
+              <Music2 className="size-3.5" aria-hidden />
+              原声 · {current.author.nickname}
+            </p>
+            <p className="mt-1 flex items-center gap-3 text-[11px] text-white/60">
+              <span>{formatCount(current.stats.views)} 次播放</span>
+              <span>{current.category?.name}</span>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 操作提示 */}
+      <AnimatePresence>
+        {hint && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="absolute top-20 left-1/2 z-30 -translate-x-1/2 rounded-pill bg-black/65 px-3 py-1.5 text-xs text-white"
+          >
+            {hint}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 双击点赞心形粒子 */}
+      <div className="pointer-events-none absolute inset-0 z-30">
+        <AnimatePresence>
+          {hearts.map((heart) => (
+            <motion.span
+              key={heart.id}
+              initial={{ opacity: 0, scale: 0, rotate: -12 }}
+              animate={{ opacity: [0, 1, 1, 0], scale: [0, 1.4, 0.8, 1.15], rotate: [-12, 6, 0, 0] }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.66, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute text-brand"
+              style={{ left: heart.x - 32, top: heart.y - 32 }}
+            >
+              <Heart className="size-16 fill-current drop-shadow-lg" />
+              {Array.from({ length: 6 }, (_, i) => {
+                const angle = (i / 6) * Math.PI * 2;
+                return (
+                  <motion.span
+                    key={i}
+                    initial={{ opacity: 0.9, x: 0, y: 0, scale: 1 }}
+                    animate={{
+                      opacity: 0,
+                      x: Math.cos(angle) * 52,
+                      y: Math.sin(angle) * 52,
+                      scale: 0.4,
+                    }}
+                    transition={{ duration: 0.6, ease: 'easeOut' }}
+                    className="absolute top-1/2 left-1/2 size-2 rounded-full bg-brand"
+                  />
+                );
+              })}
+            </motion.span>
+          ))}
+        </AnimatePresence>
+      </div>
+
+      {/* 手势提示 */}
+      <div className="pointer-events-none absolute bottom-6 left-1/2 z-20 hidden -translate-x-1/2 text-[11px] text-white/55 sm:block">
+        上滑看下一个 · 双击点赞 · 长按 2 倍速
+      </div>
+
+      {/* 评论抽屉 */}
+      <ShortsCommentSheet
+        open={commentsOpen}
+        onClose={() => setCommentsOpen(false)}
+        videoId={current?.id ?? 0}
+        commentCount={current?.stats.comments ?? 0}
+      />
+
+      {current && (
+        <>
+          <ShareDialog
+            open={shareOpen}
+            onClose={() => setShareOpen(false)}
+            title={current.title}
+            path={`/shorts?v=${current.id}`}
+            coverUrl={current.coverUrl}
+          />
+          <ReportDialog
+            open={reportOpen}
+            onClose={() => setReportOpen(false)}
+            targetType="VIDEO"
+            targetId={current.id}
+            targetTitle={current.title}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
+function InteractionButton({
+  icon,
+  label,
+  count,
+  active,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  count?: number;
+  active?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={active}
+      onClick={onClick}
+      className="flex flex-col items-center gap-1 text-white transition-transform active:scale-90"
+    >
+      <span
+        className={cn(
+          'grid size-11 place-items-center rounded-full bg-black/35 backdrop-blur-sm transition-colors',
+          active && 'bg-brand-soft',
+        )}
+      >
+        {icon}
+      </span>
+      {count !== undefined && <span className="text-[11px] tabular-nums text-white/85">{formatCount(count)}</span>}
+    </button>
+  );
+}
+
+/** 短视频评论抽屉：底部弹出，复用评论组件 */
+function ShortsCommentSheet({
+  open,
+  onClose,
+  videoId,
+  commentCount,
+}: {
+  open: boolean;
+  onClose: () => void;
+  videoId: number;
+  commentCount: number;
+}) {
+  if (!open || videoId === 0) return null;
+
+  return (
+    <div className="absolute inset-0 z-40 flex items-end" role="dialog" aria-modal="true" aria-label="评论">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <motion.div
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        className="relative flex max-h-[76%] w-full flex-col rounded-t-2xl bg-surface"
+      >
+        <header className="flex items-center justify-between border-b border-line px-4 py-3">
+          <h2 className="text-sm font-semibold text-fg">评论 {formatCount(commentCount)}</h2>
+          <Button size="xs" variant="ghost" onClick={onClose}>
+            关闭
+          </Button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+          <ShortsComments videoId={videoId} />
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function ShortsComments({ videoId }: { videoId: number }) {
+  const { data, isLoading } = useComments(videoId, { sort: 'hot', page: 1, pageSize: 20 });
+  if (isLoading) return <Spinner label="评论加载中" />;
+  const items = data?.items ?? [];
+  if (items.length === 0) return <p className="text-sm text-fg-muted">还没有评论，说点什么吧。</p>;
+  return (
+    <ul className="flex flex-col gap-4">
+      {items.map((item) => (
+        <li key={item.id} className="flex gap-3">
+          <Avatar src={item.user.avatar} name={item.user.nickname} size="sm" />
+          <div className="min-w-0">
+            <p className="text-[13px] font-medium text-fg">{item.user.nickname}</p>
+            <p className="mt-0.5 text-[13px] leading-relaxed text-fg-muted">{item.content}</p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
