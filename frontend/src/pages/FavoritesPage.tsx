@@ -4,7 +4,7 @@
  * 批量移出通过接口保存，并同步收藏列表缓存。
  */
 import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Check, Compass, HeartOff, ListPlus } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import {
@@ -24,8 +24,10 @@ import {
 import { useFavorites, usePlaylists, useRemoveFavorites } from '@/hooks/useApi';
 import { formatCount } from '@/lib/format';
 import { useUiStore } from '@/stores/uiStore';
+import { videoApi } from '@/api/videos';
 
 export default function FavoritesPage() {
+  const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [folderId, setFolderId] = useState<number | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
@@ -44,6 +46,19 @@ export default function FavoritesPage() {
     setFolderId(next);
     setPage(1);
     setSelected(new Set());
+  };
+
+  const playPlaylist = async (playlistId: number, playlistName: string) => {
+    try {
+      const items = await videoApi.playlistVideos(playlistId);
+      if (!items.length) {
+        useUiStore.getState().toast({ title: `「${playlistName}」暂无视频`, description: '先从收藏列表加入视频。', tone: 'info' });
+        return;
+      }
+      navigate(`/video/${items[0].id}`);
+    } catch (error) {
+      useUiStore.getState().toast({ title: '播放列表加载失败', description: error instanceof Error ? error.message : '请稍后重试', tone: 'error' });
+    }
   };
 
   const toggleSelect = (videoId: number) => {
@@ -68,21 +83,24 @@ export default function FavoritesPage() {
     });
   };
 
-  const handleAddToPlaylist = (playlistName: string) => {
+  const handleAddToPlaylist = async (playlistId: number, playlistName: string) => {
     const count = selected.size;
     if (count === 0) return;
-    setSelected(new Set());
-    useUiStore.getState().toast({
-      title: `已把 ${count} 个视频加入「${playlistName}」`,
-      tone: 'success',
-    });
+    try {
+      await Promise.all([...selected].map((videoId) => videoApi.addToPlaylist(playlistId, videoId)));
+      setSelected(new Set());
+      await playlists.refetch();
+      useUiStore.getState().toast({ title: `已把 ${count} 个视频加入「${playlistName}」`, tone: 'success' });
+    } catch (error) {
+      useUiStore.getState().toast({ title: '加入播放列表失败', description: error instanceof Error ? error.message : '请稍后重试', tone: 'error' });
+    }
   };
 
   const playlistOptions = playlists.data?.length
     ? playlists.data.map((playlist) => ({
         key: String(playlist.id),
         label: `${playlist.name}（${playlist.count}）`,
-        onSelect: () => handleAddToPlaylist(playlist.name),
+        onSelect: () => void handleAddToPlaylist(playlist.id, playlist.name),
       }))
     : [{ key: 'empty', label: '还没有播放列表', disabled: true }];
 
@@ -182,13 +200,7 @@ export default function FavoritesPage() {
                   <button
                     type="button"
                     aria-label={`播放列表 ${playlist.name}，共 ${playlist.count} 个视频`}
-                    onClick={() =>
-                      useUiStore.getState().toast({
-                        title: `「${playlist.name}」连续播放`,
-                        description: '播放列表的连播能力还在开发中。',
-                        tone: 'info',
-                      })
-                    }
+                    onClick={() => void playPlaylist(playlist.id, playlist.name)}
                     className="group flex w-full flex-col gap-2 rounded-card border border-line bg-surface p-2.5 text-left transition-shadow duration-200 hover:shadow-raised"
                   >
                     <span className="relative block aspect-video w-full overflow-hidden rounded-[8px] bg-surface-2">

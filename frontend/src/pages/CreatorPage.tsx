@@ -25,6 +25,7 @@ import { VIDEO_STATUS_LABELS } from '@/lib/constants';
 import { formatCount, formatDuration, formatDurationText, formatPercent, formatRelative } from '@/lib/format';
 import { useAuthStore } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
+import { videoApi } from '@/api/videos';
 import {
   useCreatorDashboard,
   useCreatorVideos,
@@ -752,6 +753,21 @@ function ContentRow({
   const toast = useUiStore((s) => s.toast);
   const canDownload =
     useAuthStore((s) => s.user?.permissions.includes('video:download') ?? false) && video.status === 'PUBLISHED';
+  const downloadSource = async () => {
+    try {
+      const result = await videoApi.download(video.id);
+      const link = document.createElement('a');
+      link.href = result.url;
+      link.download = result.fileName ?? `${video.title}.mp4`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      toast({ title: '下载失败', description: error instanceof Error ? error.message : '请稍后重试', tone: 'error' });
+    }
+  };
 
   return (
     <li className="flex gap-3 border-b border-line px-3.5 py-3.5 last:border-b-0">
@@ -786,12 +802,7 @@ function ContentRow({
                       key: 'download',
                       label: '下载源文件',
                       icon: <Download className="size-3.5" />,
-                      onSelect: () =>
-                        toast({
-                          title: '源文件下载',
-                          description: '演示环境未接入对象存储，下载链接需要服务端签名后生成。',
-                          tone: 'info',
-                        }),
+                      onSelect: () => void downloadSource(),
                     },
                   ]
                 : []),

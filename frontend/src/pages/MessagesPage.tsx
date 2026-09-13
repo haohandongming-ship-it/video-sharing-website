@@ -358,6 +358,7 @@ function MessageSection() {
     return Number.isFinite(raw) && raw > 0 ? raw : null;
   });
   const [draft, setDraft] = useState('');
+  const [attachment, setAttachment] = useState<DirectMessage['attachment']>(null);
 
   /** ?c= 未指定或返回列表（0）时落到第一个会话 */
   const selectedId = pickedId ?? conversations[0]?.id ?? 0;
@@ -407,14 +408,15 @@ function MessageSection() {
       conversationId: selectedId,
       senderId: myId,
       content,
-      attachment: null,
+      attachment,
       createdAt: new Date().toISOString(),
       mine: true,
       pending: true,
     };
     if (previous) client.setQueryData<DirectMessage[]>(key, [...previous, optimistic]);
     setDraft('');
-    send.mutate(content, {
+    setAttachment(null);
+    send.mutate({ content, attachment }, {
       onSuccess: () => {
         sendingRef.current = false;
       },
@@ -426,12 +428,12 @@ function MessageSection() {
     });
   }
 
-  function attachmentHint() {
-    toast({
-      title: '演示环境暂不支持发送图片与视频',
-      description: '私信附件的上传能力还在开发中，当前仅支持文字消息。',
-      tone: 'info',
-    });
+  function attachmentHint(type: 'IMAGE' | 'VIDEO') {
+    const url = window.prompt(type === 'IMAGE' ? '粘贴图片地址（http/https）' : '粘贴视频地址（http/https）');
+    if (!url?.trim()) return;
+    try { new URL(url.trim()); } catch { toast({ title: '附件地址无效', tone: 'error' }); return; }
+    setAttachment({ type, url: url.trim() });
+    toast({ title: '附件已添加', description: '发送消息后附件会随消息保存。', tone: 'success' });
   }
 
   return (
@@ -574,11 +576,8 @@ function MessageSection() {
                             )}
                           >
                             {message.content}
-                            {message.attachment && (
-                              <span className="mt-1 block text-[11px] opacity-80">
-                                {message.attachment.type === 'IMAGE' ? '图片' : '视频'}附件
-                              </span>
-                            )}
+                            {message.attachment?.type === 'IMAGE' && <img src={message.attachment.url} alt="消息图片" className="mt-2 max-h-48 max-w-full rounded" />}
+                            {message.attachment?.type === 'VIDEO' && <a href={message.attachment.url} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] underline">打开视频附件</a>}
                           </div>
                         </div>
                       </div>
@@ -606,13 +605,13 @@ function MessageSection() {
               />
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
-                  <IconButton label="发送图片" size="icon-sm" onClick={attachmentHint}>
+                  <IconButton label="发送图片" size="icon-sm" onClick={() => attachmentHint('IMAGE')}>
                     <ImageIcon className="size-4" />
                   </IconButton>
-                  <IconButton label="发送视频" size="icon-sm" onClick={attachmentHint}>
+                  <IconButton label="发送视频" size="icon-sm" onClick={() => attachmentHint('VIDEO')}>
                     <Video className="size-4" />
                   </IconButton>
-                  <span className="ml-1 text-[11px] text-fg-subtle">演示环境暂不支持附件</span>
+                  <span className="ml-1 text-[11px] text-fg-subtle">支持粘贴图片或视频地址</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] tabular-nums text-fg-subtle">

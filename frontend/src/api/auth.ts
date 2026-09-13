@@ -17,6 +17,9 @@ export const authApi = {
 
   register: (payload: RegisterPayload) => http.post<AuthSession>('/api/v1/auth/register', payload),
 
+  resetPassword: (payload: { phone: string; code: string; password: string }) =>
+    http.post<{ success: boolean }>('/api/v1/auth/password/reset', payload),
+
   /** 发送短信验证码（服务端有防轰炸限额，见 13.3） */
   sendSmsCode: (phone: string, captchaToken?: string) =>
     http.post<{ sent: boolean; expiresIn: number; mockCode?: string }>('/api/v1/auth/sms-code', {

@@ -74,6 +74,9 @@ export const videoApi = {
     }),
 
   playlists: () => http.get<Playlist[]>('/api/v1/videos/playlists', { auth: true }),
+  playlistVideos: (playlistId: number) => http.get<VideoSummary[]>(`/api/v1/videos/playlists/${playlistId}`, { auth: true }),
+  createPlaylist: (name: string, description?: string) => http.post<Playlist>('/api/v1/videos/playlists', { name, description }, { auth: true }),
+  addToPlaylist: (playlistId: number, videoId: number) => http.post<{ success: boolean }>(`/api/v1/videos/playlists/${playlistId}/videos`, { videoId }, { auth: true }),
 
   like: (id: number, active: boolean) =>
     http.post<{ active: boolean; count: number }>(
@@ -104,7 +107,7 @@ export const videoApi = {
     ),
 
   download: (id: number) =>
-    http.get<{ url: string; expiresIn: number; quality: Quality }>(`/api/v1/videos/${id}/download`, {
+    http.get<{ url: string; expiresIn: number; quality: Quality; fileName?: string }>(`/api/v1/videos/${id}/download`, {
       auth: true,
     }),
 

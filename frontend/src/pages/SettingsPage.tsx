@@ -68,10 +68,7 @@ const REAL_NAME_TONES: Record<string, 'neutral' | 'warning' | 'success' | 'dange
 interface DeviceRow { id: string; name: string; location: string; lastActive: string; current: boolean; kind: 'desktop' | 'mobile' }
 
 const DEVICES: DeviceRow[] = [
-  { id: 'cur', name: 'Chrome · macOS', location: '本机', lastActive: '正在使用', current: true, kind: 'desktop' },
-  { id: 'd2', name: '光影 iOS 客户端', location: '上海 · 移动网络', lastActive: '2026-09-12 21:40', current: false, kind: 'mobile' },
-  { id: 'd3', name: 'Edge · Windows', location: '杭州 · 电信', lastActive: '2026-09-10 09:12', current: false, kind: 'desktop' },
-  { id: 'd4', name: '光影 Android 客户端', location: '北京 · 联通', lastActive: '2026-09-06 18:03', current: false, kind: 'mobile' },
+  { id: 'cur', name: '当前浏览器', location: '本机', lastActive: '正在使用', current: true, kind: 'desktop' },
 ];
 
 /** 密码强度：仅作填写提示，最终强度判定以服务端为准 */

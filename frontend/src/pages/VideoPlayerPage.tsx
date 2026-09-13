@@ -298,7 +298,7 @@ export default function VideoPlayerPage() {
                     .then((res) => {
                       toast({
                         title: '下载链接已生成',
-                        description: `有效期 ${Math.round(res.expiresIn / 60)} 分钟 · ${QUALITY_LABELS[res.quality]}`,
+                        description: `有效期 ${Math.round(res.expiresIn / 60)} 分钟 · ${QUALITY_LABELS[res.quality] ?? '原始文件'}`,
                         tone: 'success',
                         action: { label: '开始下载', onClick: () => window.open(res.url, '_blank') },
                       });

@@ -79,7 +79,7 @@ function strengthOf(password: string): { label: string; percent: number; bar: st
 function usernameHint(username: string): string {
   const value = username.trim();
   if (!value) return '用户名注册后不可修改，请谨慎填写';
-  if (value.length < 4) return `还需 ${4 - value.length} 个字符`;
+  if (value.length < 3) return `还需 ${3 - value.length} 个字符`;
   if (!/^[A-Za-z0-9_]+$/.test(value)) return '仅支持字母、数字与下划线';
   if (DEMO_ACCOUNTS.some((demo) => demo.account === value)) return '该用户名已被占用';
   return '该用户名可以使用';
@@ -204,20 +204,20 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
   const submitRegister = async () => {
     const ok = validate(
       {
-        rUsername: rUsername.trim().length < 4,
+        rUsername: rUsername.trim().length < 3,
         rNickname: rNickname.trim().length < 2,
         rEmail: !EMAIL_PATTERN.test(rEmail),
         rPhone: Boolean(rPhone) && !PHONE_PATTERN.test(rPhone),
-        rPassword: rPassword.length < 6,
+        rPassword: rPassword.length < 8,
         rConfirm: rConfirm !== rPassword,
         agreed: !agreed,
       },
       {
-        rUsername: '用户名至少 4 个字符',
+        rUsername: '用户名至少 3 个字符',
         rNickname: '昵称至少 2 个字符',
         rEmail: '请输入有效的邮箱地址',
         rPhone: '请输入 11 位手机号，或留空',
-        rPassword: '密码至少 6 位',
+        rPassword: '密码至少 8 位',
         rConfirm: '两次输入的密码不一致',
         agreed: '请先阅读并同意《用户协议》与《隐私政策》',
       },
@@ -240,26 +240,32 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
     }
   };
 
-  const submitForgot = () => {
+  const submitForgot = async () => {
     const ok = validate(
       {
         fPhone: !PHONE_PATTERN.test(fPhone),
         fCode: !CODE_PATTERN.test(fCode),
-        fPassword: fPassword.length < 6,
+        fPassword: fPassword.length < 8,
         fConfirm: fConfirm !== fPassword,
       },
       {
         fPhone: '请输入 11 位手机号',
         fCode: '请输入 6 位数字验证码',
-        fPassword: '新密码至少 6 位',
+        fPassword: '新密码至少 8 位',
         fConfirm: '两次输入的密码不一致',
       },
     );
     if (!ok) return;
-    setSmsPhone(fPhone);
-    setMode('login');
-    setMethod('sms');
-    notify('密码已重置', '请使用新密码登录；演示环境不发送真实短信', 'success');
+    clearError();
+    try {
+      await authApi.resetPassword({ phone: fPhone, code: fCode, password: fPassword });
+      setSmsPhone(fPhone);
+      setMode('login');
+      setMethod('sms');
+      notify('密码已重置', '请使用新密码登录', 'success');
+    } catch (error) {
+      notify('密码重置失败', error instanceof Error ? error.message : '请稍后重试', 'error');
+    }
   };
 
   const handleOauth = async (provider: 'wechat' | 'qq') => {
@@ -462,7 +468,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
             {mode === 'register' && (
               <div className="mt-5 flex flex-col gap-3">
                 {field(
-                  '用户名（登录用，至少 4 个字符）',
+                  '用户名（登录用，至少 3 个字符）',
                   <Input
                     autoComplete="username"
                     placeholder="字母、数字或下划线"
@@ -516,7 +522,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                   errors.rPhone,
                 )}
                 {field(
-                  '密码（至少 6 位）',
+                  '密码（至少 8 位）',
                   <Input
                     type="password"
                     autoComplete="new-password"
@@ -617,7 +623,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                   <Input
                     type="password"
                     autoComplete="new-password"
-                    placeholder="至少 6 位"
+                    placeholder="至少 8 位"
                     aria-label="新密码"
                     icon={<Lock className="size-4" aria-hidden />}
                     value={fPassword}
@@ -641,7 +647,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                   />,
                   errors.fConfirm,
                 )}
-                <Button variant="primary" size="lg" fullWidth aria-label="重置密码" onClick={submitForgot}>
+                <Button variant="primary" size="lg" fullWidth aria-label="重置密码" onClick={() => void submitForgot()}>
                   重置密码
                 </Button>
                 <Button variant="ghost" size="sm" fullWidth aria-label="返回登录" onClick={() => setMode('login')}>

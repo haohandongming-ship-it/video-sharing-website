@@ -22,11 +22,12 @@ public class DevDataSeeder implements ApplicationRunner {
         long moderator=create("moderator","moderator@example.com","13800000002","审核员",Role.MODERATOR,true);
         long creator=create("laowang","laowang@example.com","13800000003","架构师老王",Role.USER,true);
         long newbie=create("newbie","newbie@example.com","13800000011","新来的创作者",Role.USER,false);
-        for(int i=1;i<=12;i++){
+        // Keep a small, representative seed set. Real uploads are persisted by the upload flow.
+        for(int i=1;i<=4;i++){
             String sha=String.format("%064x",i);
             jdbc.update("INSERT INTO files(sha256,file_size,bucket,object_key,mime_type,ref_count,status) VALUES(?,?,?,?,?,?,?)",sha,20_000_000L+i,"videos","demo/"+i+".mp4","video/mp4",1,"ACTIVE");
             Long fileId=jdbc.queryForObject("SELECT id FROM files WHERE sha256=?",Long.class,sha);
-            long author=i%4==0?moderator:creator;String type=i%5==0?"SHORT":"LONG";String status=i==11?"REVIEWING":i==12?"REJECTED":"PUBLISHED";
+            long author=i%4==0?moderator:creator;String type=i%4==0?"SHORT":"LONG";String status=i==3?"REVIEWING":i==4?"REJECTED":"PUBLISHED";
             jdbc.update("INSERT INTO videos(user_id,source_file_id,title,description,cover_url,hls_url,duration,file_size,video_type,category_id,visibility,status,download_enabled,view_count,like_count,comment_count,favorite_count,published_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",author,fileId,"光影视频示例 "+i,"用于前后端联调的示例视频内容。","https://picsum.photos/seed/video"+i+"/640/360","/demo/hls/master.m3u8",i%5==0?45:300+i*37,20_000_000L+i,type,(i%3)+1,"PUBLIC",status,true,1200L*i,83L*i,7L*i,31L*i,Timestamp.from(Instant.now().minus(Duration.ofDays(i))),Timestamp.from(Instant.now().minus(Duration.ofDays(i))),Timestamp.from(Instant.now()));
         }
         var videoIds=jdbc.query("SELECT id FROM videos ORDER BY id",(rs,n)->rs.getLong(1));
@@ -43,7 +44,7 @@ public class DevDataSeeder implements ApplicationRunner {
         jdbc.update("INSERT INTO conversations(user_a_id,user_b_id) VALUES(?,?)",creator,admin);
         Long conversation=jdbc.queryForObject("SELECT id FROM conversations WHERE user_a_id=? AND user_b_id=?",Long.class,creator,admin);
         jdbc.update("INSERT INTO direct_messages(conversation_id,sender_id,content) VALUES(?,?,?)",conversation,admin,"欢迎来到光影视频平台，有问题可以随时联系管理员。");
-        for(int index:List.of(10,11)){long videoId=videoIds.get(index);jdbc.update("INSERT INTO video_reviews(video_id,machine_result,machine_labels,risk_level,status) VALUES(?,?,?,?,?)",videoId,index==10?"PASS":"SUSPECT",index==10?"[]":"[封面]",index==10?"LOW":"MEDIUM","PENDING");}
+        for(int index:List.of(2,3)){long videoId=videoIds.get(index);jdbc.update("INSERT INTO video_reviews(video_id,machine_result,machine_labels,risk_level,status) VALUES(?,?,?,?,?)",videoId,index==2?"PASS":"SUSPECT",index==2?"[]":"[封面]",index==2?"LOW":"MEDIUM","PENDING");}
         for(String tag:List.of("架构","Spring Boot","React"))jdbc.update("INSERT INTO tags(tag_name) VALUES(?)",tag);
         var tagIds=jdbc.query("SELECT id FROM tags",(rs,n)->rs.getLong(1));for(Long tagId:tagIds)jdbc.update("INSERT INTO video_tags(video_id,tag_id) VALUES(?,?)",videoIds.get(0),tagId);
     }

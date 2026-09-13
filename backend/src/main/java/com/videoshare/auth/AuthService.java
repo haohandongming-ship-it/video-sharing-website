@@ -8,6 +8,12 @@ public class AuthService {
     private final UserRepository users; private final PasswordEncoder encoder; private final JwtService jwt; private final RefreshTokenService refresh; private final StringRedisTemplate redis; private final AuthProperties props; private final JdbcTemplate jdbc; private final boolean production;
     public AuthService(UserRepository users,PasswordEncoder encoder,JwtService jwt,RefreshTokenService refresh,StringRedisTemplate redis,AuthProperties props,JdbcTemplate jdbc,Environment env){this.users=users;this.encoder=encoder;this.jwt=jwt;this.refresh=refresh;this.redis=redis;this.props=props;this.jdbc=jdbc;this.production=env.matchesProfiles("prod");}
     @Transactional public AuthDtos.AuthData register(AuthDtos.RegisterRequest request) { if(users.existsByEmail(request.email())||users.existsByUsername(request.username())) throw new ApiException(ErrorCode.CONFLICT,"邮箱或用户名已被使用"); User user=new User(); user.register(request.username(),request.email(),blankToNull(request.phone()),encoder.encode(request.password()),request.nickname()); users.save(user); jdbc.update("INSERT INTO creator_profiles(user_id,auth_status,trust_score) VALUES (?,?,?)",user.getId(),"NONE",0); return token(user); }
+    @Transactional public void resetPassword(AuthDtos.ResetPasswordRequest request) {
+        if(!validSms(request.phone(),request.code())) throw new ApiException(ErrorCode.SMS_INVALID,"验证码错误或已失效");
+        User user=users.findByPhone(request.phone()).orElseThrow(()->new ApiException(ErrorCode.NOT_FOUND,"该手机号尚未注册"));
+        user.changePassword(encoder.encode(request.password())); users.save(user); refresh.revokeAll(user.getId());
+        try { redis.delete("sms:code:"+request.phone()); } catch(DataAccessException ex) { if(isProduction()) throw new ApiException(ErrorCode.INTERNAL,"验证码服务暂时不可用"); }
+    }
     @Transactional public AuthDtos.AuthData login(AuthDtos.LoginRequest request) {
         User user;
         if("SMS".equalsIgnoreCase(request.grantType())) { if(request.phone()==null||request.code()==null||!validSms(request.phone(),request.code())) throw new ApiException(ErrorCode.SMS_INVALID,"验证码错误或已失效"); user=users.findByPhone(request.phone()).orElseThrow(()->new ApiException(ErrorCode.BAD_CREDENTIALS,"手机号尚未注册")); }

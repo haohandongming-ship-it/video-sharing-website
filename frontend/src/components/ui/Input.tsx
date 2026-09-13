@@ -137,14 +137,14 @@ export function Switch({ checked, onChange, label, description, disabled, classN
           onChange(!checked);
         }}
         className={cn(
-          'relative mt-0.5 h-6 w-11 shrink-0 rounded-full transition-colors duration-200',
+          'relative mt-0.5 inline-flex h-6 w-11 shrink-0 items-center rounded-full p-0 transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40',
           checked ? 'bg-accent' : 'bg-surface-3',
         )}
       >
         <span
           className={cn(
-            'absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
-            checked ? 'translate-x-5' : 'translate-x-0.5',
+            'pointer-events-none absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            checked ? 'translate-x-5' : 'translate-x-0',
           )}
         />
       </button>

@@ -19,6 +19,7 @@ import type {
   AppNotification,
   CommentItem,
   CommentQuery,
+  DirectMessage,
   PageData,
   PlatformSettings,
   RankingQuery,
@@ -566,7 +567,7 @@ export function useMessages(conversationId: number) {
 export function useSendMessage(conversationId: number) {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (content: string) => messageApi.send(conversationId, content),
+    mutationFn: (payload: { content: string; attachment?: DirectMessage['attachment'] }) => messageApi.send(conversationId, payload.content, payload.attachment),
     onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.messages.thread(conversationId) }),
   });
 }
