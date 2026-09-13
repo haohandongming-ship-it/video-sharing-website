@@ -143,7 +143,7 @@ export function Switch({ checked, onChange, label, description, disabled, classN
       >
         <span
           className={cn(
-            'absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
+            'absolute left-0.5 top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]',
             checked ? 'translate-x-5' : 'translate-x-0.5',
           )}
         />
