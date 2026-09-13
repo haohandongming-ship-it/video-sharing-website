@@ -245,7 +245,7 @@ export default function CreatorPage() {
             isError={dashboardQuery.isError}
             onRetry={() => void dashboardQuery.refetch()}
           />
-          <ContentSection />
+          <ContentSection onStats={() => goSection('dashboard')} />
           <ComplianceSection certified={certified} />
         </div>
       </div>
@@ -641,7 +641,7 @@ function TrendChart({ points, metricLabel }: { points: TrendPoint[]; metricLabel
 
 /* ------------------------------------------------------------ 内容管理 */
 
-function ContentSection() {
+function ContentSection({ onStats }: { onStats: () => void }) {
   const [status, setStatus] = useState<ContentStatus>('ALL');
   const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState(0);
@@ -722,6 +722,7 @@ function ContentSection() {
                 video={video}
                 onEdit={() => setEditingId(video.id)}
                 onDelete={() => confirmDelete(video)}
+                onStats={onStats}
               />
             ))}
           </ul>
@@ -745,10 +746,12 @@ function ContentRow({
   video,
   onEdit,
   onDelete,
+  onStats,
 }: {
   video: CreatorVideoRow;
   onEdit: () => void;
   onDelete: () => void;
+  onStats: () => void;
 }) {
   const toast = useUiStore((s) => s.toast);
   const canDownload =
@@ -810,12 +813,7 @@ function ContentRow({
                 key: 'stats',
                 label: '查看数据',
                 icon: <BarChart3 className="size-3.5" />,
-                onSelect: () =>
-                  toast({
-                    title: '作品数据',
-                    description: '单条作品的详细数据面板还在开发中，当前可在数据看板查看整体趋势。',
-                    tone: 'info',
-                  }),
+                onSelect: onStats,
               },
               {
                 key: 'delete',
