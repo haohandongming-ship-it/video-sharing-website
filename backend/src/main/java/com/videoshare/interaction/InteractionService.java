@@ -22,10 +22,12 @@ public class InteractionService {
     @Transactional public Map<String,Object> progress(long userId,long videoId,int seconds){accessibleVideo(videoId,userId);int updated=jdbc.update("UPDATE play_records SET progress=?,finished=?,updated_at=? WHERE user_id=? AND video_id=?",seconds,false,Timestamp.from(Instant.now()),userId,videoId);if(updated==0)jdbc.update("INSERT INTO play_records(user_id,video_id,progress,finished,updated_at) VALUES(?,?,?,?,?)",userId,videoId,seconds,false,Timestamp.from(Instant.now()));return Map.of("saved",true,"progress",seconds);}
     public List<Map<String,Object>> ranking(String type,String period,Long categoryId,Long viewer){
         String metric=Objects.requireNonNullElse(type,"hot");
-        long periodHours=switch(Objects.requireNonNullElse(period,"daily")){case "weekly"->24*7;case "monthly"->24*30;default->24;};
-        Instant since=Instant.now().minus(Duration.ofHours(periodHours));
+        String window=Objects.requireNonNullElse(period,"daily");
+        long periodHours=switch(window){case "weekly"->24*7;case "monthly"->24*30;default->24;};
+        Instant since="all".equals(window)?Instant.EPOCH:Instant.now().minus(Duration.ofHours(periodHours));
         List<Video> list=videos.findAll().stream()
                 .filter(v->v.getStatus()==VideoStatus.PUBLISHED&&v.getVisibility()==Visibility.PUBLIC&&(categoryId==null||Objects.equals(v.getCategoryId(),categoryId)))
+                .filter(v->!"newcomer".equals(metric)||publishedOrCreated(v).isAfter(Instant.now().minus(Duration.ofDays(30))))
                 .sorted(Comparator.comparingDouble((Video v)->rankingScore(v,metric,since)).reversed())
                 .limit(50).toList();
         List<Map<String,Object>> out=new ArrayList<>();
@@ -71,6 +73,7 @@ public class InteractionService {
         double recency=published.isAfter(since)?1.2:Math.max(.35,1d/(1d+Duration.between(published,since).abs().toHours()/240d));
         return base*recency;
     }
+    private Instant publishedOrCreated(Video v){return Objects.requireNonNullElse(v.getPublishedAt(),v.getCreatedAt());}
     private int parseCursor(String cursor){try{return cursor==null?0:Math.max(0,Integer.parseInt(cursor));}catch(NumberFormatException ex){return 0;}}
     private Map<String,Object> page(List<?> all,int page,int size){page=Math.max(1,page);size=Math.max(1,Math.min(size,100));int from=(int)Math.min((long)(page-1)*size,all.size()),to=Math.min(from+size,all.size());Map<String,Object>m=new LinkedHashMap<>();m.put("items",all.subList(from,to));m.put("total",all.size());m.put("page",page);m.put("pageSize",size);m.put("hasMore",to<all.size());return m;}
     private String sanitize(String text){return text.replaceAll("<[^>]*>","").trim();}
