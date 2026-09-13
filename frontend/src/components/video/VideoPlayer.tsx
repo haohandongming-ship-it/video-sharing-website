@@ -548,9 +548,17 @@ export function ShortVideoPlayer({
     const video = videoRef.current;
     if (!video) return;
     const source = src || '/demo/hls/master.m3u8';
+    // 上传的视频由后端直接提供 MP4 源文件。短视频之前一律交给 hls.js，
+    // 导致真实上传文件无法播放（hls.js 只支持 HLS 清单）。
+    const nativeSource = /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(source)
+      || /\/api\/v1\/videos\/\d+\/source(?:[?#]|$)/i.test(source);
     let cancelled = false;
 
     const setup = async () => {
+      if (nativeSource) {
+        video.src = source;
+        return;
+      }
       const { default: HlsCtor } = await import('hls.js');
       if (cancelled) return;
       if (HlsCtor.isSupported()) {

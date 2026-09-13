@@ -52,5 +52,6 @@ app:
   storage:
     mode: ${STORAGE_MODE:local}
     local-root: ${STORAGE_LOCAL_ROOT:./data}
-    public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:8080}
+    # 留空时返回相对上传地址，局域网客户端会通过前端反代访问当前服务器，避免误连客户端 localhost。
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL:}
     signing-secret: ${STORAGE_SIGNING_SECRET:}
