@@ -23,6 +23,16 @@ npm exec --yes pnpm@10.18.3 -- dev
 访问 `http://localhost:5173`。演示账号密码统一为 `123456`：`admin`、`moderator`、`laowang`、`newbie`。
 如果只想离线体验，可将 `frontend/.env` 中的 `VITE_USE_MOCK` 显式改为 `true`。
 
+## 局域网访问
+
+前端开发服务器已监听局域网地址。先在运行项目的电脑上执行 `ipconfig`，找到当前 Wi-Fi/以太网网卡的 IPv4 地址，然后让同一局域网内的设备访问：
+
+```text
+http://<运行项目电脑的IPv4>:5173
+```
+
+例如本机当前地址是 `172.20.10.3`，访问 `http://172.20.10.3:5173`。登录和注册接口已经允许私有 IPv4 网段的前端来源；如果页面完全无法打开，需要在 Windows 防火墙中允许 Node.js/Vite 的 TCP 5173 端口，并确认设备连接的是同一个局域网。
+
 ## 生产依赖
 
 ```powershell
@@ -38,6 +48,10 @@ cd backend; mvn test
 cd frontend; npm exec --yes pnpm@10.18.3 -- verify
 node scripts/cdp-check.mjs http://localhost:5173
 ```
+
+浏览器脚本应从 `frontend` 目录运行；Windows 需要通过 `CHROME_BIN` 指定浏览器可执行文件。
+默认开发数据库是内存 H2，后端重启会重建演示数据，不适合保存正式内容。
+已完成的检查和已知功能缺口见 [测试报告](./TEST_REPORT.md)。
 
 ## 文档
 

@@ -84,6 +84,16 @@ async function dispatch(url: string, init: RequestInit): Promise<Response> {
 }
 
 async function parseEnvelope<T>(response: Response): Promise<T> {
+  if (!response.ok) {
+    let message = response.statusText || '请求失败';
+    let code: number = BIZ_CODE.SERVER_ERROR;
+    try {
+      const payload = await response.json();
+      if (typeof payload?.message === 'string') message = payload.message;
+      if (typeof payload?.code === 'number' && payload.code !== BIZ_CODE.OK) code = payload.code;
+    } catch { /* 代理和网关错误可能没有 JSON 响应体。 */ }
+    throw new ApiError(message, code, response.status);
+  }
   if (response.status === 204) return undefined as T;
   const text = await response.text();
   if (!text) return undefined as T;
@@ -147,32 +157,30 @@ async function execute<T>(path: string, options: RequestOptions = {}): Promise<T
     body: body === undefined ? undefined : rawBody ? (body as BodyInit) : JSON.stringify(body),
   };
 
-  let response: Response;
   try {
-    response = await dispatch(url, init);
+    const response = await dispatch(url, init);
+    if (response.status === 401 && auth) {
+      const newToken = await refreshAccessToken();
+      if (!newToken) {
+        authBridge.expire('expired');
+        throw new ApiError('登录状态已过期，请重新登录', BIZ_CODE.UNAUTHORIZED, 401);
+      }
+      headers.set('Authorization', `Bearer ${newToken}`);
+      const retry = await dispatch(url, { ...init, headers });
+      if (retry.status === 401) authBridge.expire('expired');
+      return await parseEnvelope<T>(retry);
+    }
+    return await parseEnvelope<T>(response);
   } catch (error) {
-    window.clearTimeout(timer);
+    if (error instanceof ApiError) throw error;
     if (error instanceof DOMException && error.name === 'TimeoutError') {
       throw new ApiError('请求超时，请检查网络后重试', BIZ_CODE.SERVER_ERROR, 408);
     }
     if (error instanceof DOMException && error.name === 'AbortError') throw error;
     throw new ApiError('网络连接失败，请稍后重试', BIZ_CODE.SERVER_ERROR, 0);
+  } finally {
+    window.clearTimeout(timer);
   }
-  window.clearTimeout(timer);
-
-  // 401：静默刷新一次后重试（旋转 + 复用检测在服务端）
-  if (response.status === 401 && auth) {
-    const newToken = await refreshAccessToken();
-    if (!newToken) {
-      authBridge.expire('expired');
-      throw new ApiError('登录状态已过期，请重新登录', BIZ_CODE.UNAUTHORIZED, 401);
-    }
-    headers.set('Authorization', `Bearer ${newToken}`);
-    const retry = await dispatch(url, { ...init, headers });
-    return parseEnvelope<T>(retry);
-  }
-
-  return parseEnvelope<T>(response);
 }
 
 export const http = {

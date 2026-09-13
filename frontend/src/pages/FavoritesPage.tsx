@@ -1,7 +1,7 @@
 /**
  * 收藏页（文档 3.3 / 3.2：收藏夹、稍后观看、播放列表）
  * 桌面端左侧收藏夹列表 + 右侧网格；移动端用 pill 标签横向切换。
- * 批量移出 / 加入播放列表为本地状态，不落库。
+ * 批量移出通过接口保存，并同步收藏列表缓存。
  */
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -21,7 +21,7 @@ import {
   VideoGridSkeleton,
   type TabItem,
 } from '@/components/ui';
-import { useFavorites, usePlaylists } from '@/hooks/useApi';
+import { useFavorites, usePlaylists, useRemoveFavorites } from '@/hooks/useApi';
 import { formatCount } from '@/lib/format';
 import { useUiStore } from '@/stores/uiStore';
 
@@ -29,8 +29,7 @@ export default function FavoritesPage() {
   const [page, setPage] = useState(1);
   const [folderId, setFolderId] = useState<number | null>(null);
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
-  /** 本地移出的视频：接口不落库，仅隐藏当前会话的展示 */
-  const [removed, setRemoved] = useState<ReadonlySet<number>>(new Set());
+  const removeFavorites = useRemoveFavorites();
 
   const query = useFavorites({ page, folderId: folderId ?? undefined });
   const playlists = usePlaylists();
@@ -38,7 +37,7 @@ export default function FavoritesPage() {
   const data = query.data;
   const folders = data?.folders ?? [];
   const total = data?.total ?? 0;
-  const videos = (data?.items ?? []).filter((video) => !removed.has(video.id));
+  const videos = data?.items ?? [];
   const activeFolder = folders.find((folder) => folder.id === folderId) ?? null;
 
   const selectFolder = (next: number | null) => {
@@ -56,15 +55,16 @@ export default function FavoritesPage() {
     });
   };
 
-  const handleRemove = () => {
+  const handleRemove = async () => {
     const count = selected.size;
-    if (count === 0) return;
-    setRemoved((prev) => new Set([...prev, ...selected]));
-    setSelected(new Set());
+    if (count === 0 || removeFavorites.isPending) return;
+    const result = await removeFavorites.mutateAsync([...selected]);
+    setSelected(new Set(result.failed));
+    if (page > 1 && result.removed.length === videos.length) setPage(page - 1);
     useUiStore.getState().toast({
-      title: `已移出 ${count} 个视频`,
-      description: '本次移除只作用于当前会话，刷新后会恢复原始列表。',
-      tone: 'success',
+      title: `已移出 ${result.removed.length} 个视频`,
+      description: result.failed.length ? `${result.failed.length} 个视频移除失败，请重试。` : undefined,
+      tone: result.failed.length ? 'warning' : 'success',
     });
   };
 
@@ -96,7 +96,7 @@ export default function FavoritesPage() {
       <div className="min-w-0">
         <h2 className="truncate text-base font-semibold text-fg">{activeFolder?.name ?? '全部收藏'}</h2>
         <p className="mt-0.5 text-xs text-fg-muted">
-          共 {formatCount(Math.max(0, total - removed.size))} 个视频
+          共 {formatCount(total)} 个视频
           {activeFolder?.isDefault ? ' · 新收藏默认放进这里' : ''}
         </p>
       </div>
@@ -129,7 +129,7 @@ export default function FavoritesPage() {
         <Button
           size="sm"
           variant="outline"
-          disabled={selected.size === 0}
+          disabled={selected.size === 0 || removeFavorites.isPending}
           icon={<HeartOff className="size-3.5" aria-hidden />}
           onClick={handleRemove}
         >

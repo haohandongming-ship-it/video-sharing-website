@@ -1,4 +1,5 @@
 import { http } from './client';
+import { USE_MOCK } from './config';
 import type {
   AppNotification,
   Conversation,
@@ -23,6 +24,18 @@ export const uploadApi = {
 
   /** 分片直传：真实环境为 MinIO 预签名 PUT，此处由 mock 拦截 */
   putPart: async (url: string, chunk: Blob, onProgress?: (loaded: number) => void): Promise<string> => {
+    if (!USE_MOCK) {
+      const response = await fetch(url, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/octet-stream', 'X-Requested-With': 'XMLHttpRequest' },
+        body: chunk,
+        credentials: 'omit',
+        signal: AbortSignal.timeout(120_000),
+      });
+      if (!response.ok) throw new Error(`分片上传失败（${response.status}）`);
+      onProgress?.(chunk.size);
+      return response.headers.get('ETag') ?? '';
+    }
     const response = await http.put<void>(url, chunk, {
       headers: { 'Content-Type': 'application/octet-stream' },
       timeout: 120_000,

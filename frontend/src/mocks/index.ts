@@ -355,7 +355,8 @@ async function route(ctx: Ctx): Promise<Response> {
     const pageSize = Number(query.get('pageSize') ?? 20);
     const folderId = query.get('folderId') ? Number(query.get('folderId')) : null;
     const all = VIDEO_STORE.filter((v) => engagement.favorited.has(v.detail.id)).map((v) => toSummary(v.detail));
-    const pool = all.length > 0 ? all : VIDEO_STORE.slice(0, 24).map((v) => toSummary(v.detail));
+    // 空收藏必须保持为空；用视频列表兜底会让“移出收藏”刷新后重新出现。
+    const pool = all;
     void folderId;
     return ok({ ...pageOf(pool, page, pageSize), folders: engagement.favoriteFolders });
   }
@@ -435,7 +436,7 @@ async function route(ctx: Ctx): Promise<Response> {
     if (['like', 'dislike', 'favorite', 'subscribe'].includes(sub ?? '')) {
       requireLogin();
       const action = String(body.action ?? 'LIKE');
-      const on = action.endsWith('UN') || action === 'OFF' ? false : true;
+      const on = !(action === 'OFF' || action === 'UN' || action.startsWith('UN'));
       if (sub === 'like') {
         const wasLiked = engagement.liked.has(id);
         if (on) engagement.liked.add(id);

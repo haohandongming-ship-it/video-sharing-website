@@ -143,6 +143,20 @@ export function usePlaylists() {
 
 /* --------------------------------------------------------- 互动（乐观更新） */
 
+export function useRemoveFavorites() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (ids: number[]) => {
+      const results = await Promise.allSettled(ids.map((id) => videoApi.favorite(id, false)));
+      return {
+        removed: ids.filter((_, index) => results[index].status === 'fulfilled'),
+        failed: ids.filter((_, index) => results[index].status === 'rejected'),
+      };
+    },
+    onSettled: () => client.invalidateQueries({ queryKey: ['videos'] }),
+  });
+}
+
 function requireLoginToast(): boolean {
   const authed = useAuthStore.getState().status === 'authenticated';
   if (!authed) {
@@ -195,6 +209,7 @@ export function useVideoInteractions(videoId: number) {
       if (context?.prev) client.setQueryData(detailKey, context.prev);
     },
     onSuccess: (result) => {
+      void client.invalidateQueries({ queryKey: ['videos'] });
       useUiStore.getState().toast({
         title: result.active ? '已加入收藏夹' : '已取消收藏',
         tone: 'success',

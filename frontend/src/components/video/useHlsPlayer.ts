@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type HlsType from 'hls.js';
 import type { Level } from 'hls.js';
-import { DEMO_HLS_URL } from '@/api/config';
+import { DEMO_HLS_URL, USE_MOCK } from '@/api/config';
 
 export interface HlsLevel {
   index: number;
@@ -108,7 +108,7 @@ export function useHlsPlayer({
 
     /** 按需加载 hls.js：首屏不下载媒体库（约 590KB），进入播放页才加载 */
     const setup = async () => {
-      if (source.endsWith('.mp4')) {
+      if (/\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(source)) {
         attachNative();
         return;
       }
@@ -152,7 +152,7 @@ export function useHlsPlayer({
       hls.on(Hls.Events.ERROR, (_event, data) => {
         if (!data.fatal) return;
         // 致命错误：先尝试用备用演示流恢复，仍失败则报错并展示重试入口
-        if (!fallbackUsed.current && source !== DEMO_HLS_URL) {
+        if (USE_MOCK && !fallbackUsed.current && source !== DEMO_HLS_URL) {
           fallbackUsed.current = true;
           hls.loadSource(DEMO_HLS_URL);
           return;
@@ -210,6 +210,12 @@ export function useHlsPlayer({
       setEnded(true);
       callbacksRef.current.onEnded?.();
     };
+    const handleError = () => {
+      const message = '视频加载失败，请稍后重试';
+      setWaiting(false);
+      setError(message);
+      callbacksRef.current.onError?.(message);
+    };
 
     video.addEventListener('loadedmetadata', handleLoadedMetadata);
     video.addEventListener('timeupdate', handleTimeUpdate);
@@ -219,6 +225,7 @@ export function useHlsPlayer({
     video.addEventListener('waiting', handleWaiting);
     video.addEventListener('playing', handlePlaying);
     video.addEventListener('ended', handleEnded);
+    video.addEventListener('error', handleError);
 
     return () => {
       video.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -229,6 +236,7 @@ export function useHlsPlayer({
       video.removeEventListener('waiting', handleWaiting);
       video.removeEventListener('playing', handlePlaying);
       video.removeEventListener('ended', handleEnded);
+      video.removeEventListener('error', handleError);
     };
   }, [autoPlay]);
 

@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { authBridge } from '@/api/authBridge';
 import { authApi } from '@/api/auth';
+import { videoApi } from '@/api/videos';
 import { session } from '@/mocks/seed';
 import {
   useAdminOverview,
@@ -19,6 +20,7 @@ import {
   useDecideReview,
   useDeleteVideo,
   useFavorites,
+  useRemoveFavorites,
   useFeed,
   useFollowList,
   useHandleReport,
@@ -80,6 +82,15 @@ beforeEach(async () => {
 });
 
 describe('公开数据 hooks', () => {
+  it('批量移出收藏写入服务端状态，重新查询不会恢复', async () => {
+    await loginAs('laowang');
+    const videoId = (await videoApi.recommend({ pageSize: 1 })).items[0].id;
+    await videoApi.favorite(videoId, true);
+    const { result } = renderHook(() => useRemoveFavorites(), { wrapper: createWrapper() });
+    await act(async () => { await result.current.mutateAsync([videoId]); });
+    const favorites = await videoApi.favorites();
+    expect(favorites.items.some((video) => video.id === videoId)).toBe(false);
+  });
   it('分类列表可加载', async () => {
     const { result } = renderHook(() => useCategories(), { wrapper: createWrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true), { timeout: 4000 });

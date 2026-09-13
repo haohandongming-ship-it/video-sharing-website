@@ -35,6 +35,10 @@ springdoc:
   swagger-ui:
     path: /swagger-ui.html
 app:
+  cors:
+    # Override with CORS_ALLOWED_ORIGIN_PATTERNS in a deployed environment.
+    # Patterns cover the private IPv4 ranges commonly assigned to a LAN client.
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://10.*:5173,http://172.16.*:5173,http://172.17.*:5173,http://172.18.*:5173,http://172.19.*:5173,http://172.20.*:5173,http://172.21.*:5173,http://172.22.*:5173,http://172.23.*:5173,http://172.24.*:5173,http://172.25.*:5173,http://172.26.*:5173,http://172.27.*:5173,http://172.28.*:5173,http://172.29.*:5173,http://172.30.*:5173,http://172.31.*:5173,http://192.168.*:5173}
   security:
     data-key-base64: ${DATA_ENCRYPTION_KEY_BASE64:}
   auth:
