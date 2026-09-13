@@ -25,6 +25,7 @@ export const COMMENT_PAGE_SIZE = 20;
 export const REPLY_PREVIEW_COUNT = 3;
 
 export const QUALITY_LABELS: Record<Quality, string> = {
+  source: '原始文件',
   '360p': '流畅 360P',
   '480p': '清晰 480P',
   '720p': '高清 720P',

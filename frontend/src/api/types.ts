@@ -124,7 +124,7 @@ export interface FollowUser extends UserBrief {
 export type VideoType = 'LONG' | 'SHORT';
 export type VideoStatus = 'PROCESSING' | 'REVIEWING' | 'PUBLISHED' | 'REJECTED' | 'DELETED';
 export type Visibility = 'PUBLIC' | 'PRIVATE' | 'UNLISTED';
-export type Quality = '360p' | '480p' | '720p' | '1080p';
+export type Quality = '360p' | '480p' | '720p' | '1080p' | 'source';
 
 export interface Category {
   id: number;
