@@ -11,6 +11,13 @@ spring:
       host: ${REDIS_HOST}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD}
+# 生产环境默认关闭 OpenAPI 文档，避免暴露内部接口结构；需要时用 SPRINGDOC_ENABLED=true 打开。
+springdoc:
+  api-docs:
+    enabled: ${SPRINGDOC_ENABLED:false}
+  swagger-ui:
+    enabled: ${SPRINGDOC_ENABLED:false}
+
 app:
   auth:
     secure-cookie: true

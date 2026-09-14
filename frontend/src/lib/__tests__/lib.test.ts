@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, afterEach } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
 import {
   formatCount,
   formatDuration,
@@ -176,19 +176,26 @@ describe('通知 store', () => {
   });
 });
 
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 describe('实时层降级（文档 15.2 降级矩阵）', () => {
+  /*
+   * 使用真实计时器：Mock 载荷改为按需动态 import（生产构建会整块摇掉），
+   * 该 import 的解析依赖宏任务，fake timers 会把它一并冻结。
+   */
   it('Mock 模式下榜单订阅以轮询兜底并立即推送一次', async () => {
-    vi.useFakeTimers();
     const received: string[] = [];
-    const handle = subscribeRanking('hot', (payload) => received.push(payload.type), { pollIntervalMs: 1000 });
+    const handle = subscribeRanking('hot', (payload) => received.push(payload.type), { pollIntervalMs: 60 });
+    await wait(25);
     expect(received.length).toBe(1);
-    vi.advanceTimersByTime(2200);
+    await wait(150);
     expect(received.length).toBeGreaterThanOrEqual(3);
     handle.close();
     const before = received.length;
-    vi.advanceTimersByTime(3000);
+    await wait(150);
     expect(received.length).toBe(before);
-    vi.useRealTimers();
   });
 
   it('Mock 模式下通知订阅进入 degraded 状态且可关闭', () => {

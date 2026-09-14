@@ -1055,7 +1055,7 @@ flowchart TB
 ```
 16.2 容器化
 ```dockerfile
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:21-jre
 RUN useradd -r -u 1001 appuser
 WORKDIR /app
 COPY target/video-platform.jar app.jar

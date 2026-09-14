@@ -1,5 +1,70 @@
 # 项目测试与修复记录
 
+## 2026-09-14 · Java 21 + Spring Boot 4.1.1 升级
+
+环境：Linux、JDK 21.0.12、Maven 3.9.16、Spring Boot 4.1.1（Spring Framework 7.0.9、Spring Security 7.1.1、Hibernate 7.4.5、Jackson 3.1.5、Flyway 12.4.0、Tomcat 11.0.24）、H2 内存库、dev profile。
+
+### 框架与工具链
+
+| 项 | 升级前 | 升级后 |
+| --- | --- | --- |
+| Java | 17（release 17） | 21 LTS（release 21） |
+| Spring Boot | 3.3.4 | 4.1.1 |
+| springdoc-openapi | 2.6.0 | 3.1.1 |
+| jjwt | 0.12.6 | 0.13.0 |
+| JSON 实现 | Jackson 2 | Jackson 3（`tools.jackson`） |
+
+迁移点：MockMvc 测试注解迁到 `org.springframework.boot.webmvc.test.autoconfigure` 并补 `spring-boot-starter-webmvc-test` 依赖；`UserDetailsServiceAutoConfiguration` 排除项迁到 `org.springframework.boot.security.autoconfigure`；`ObjectMapper`/`TypeReference` 换 Jackson 3 包名（不再有受检异常）；测试里 `JsonNode.asText()` 换成 `asString()`。
+
+### 性能与代码质量
+
+- **虚拟线程**：`spring.threads.virtual.enabled=true`，阻塞式 JDBC/MinIO 调用不再占用平台线程。
+- **消除 N+1**：列表渲染改为先收集整页主键、再用固定条数批量查询取回作者/认证/粉丝数/分区/点赞/收藏/订阅。改造前 20 条一页约 120 次往返，现在固定约 7~10 次。
+- **SQL 级分页**：目录、榜单、相关推荐、短视频、收藏、历史、创作者内容、后台队列由 `findAll()` + 内存排序改为 SQL 过滤/排序/分页（榜单分数用 H2 与 MySQL 都支持的 `LN`/`EXP`/`TIMESTAMPDIFF` 表达）。
+- **聚合替代循环**：用户主页 9 条 SQL → 1 条标量子查询；管理概览 14 天趋势 42 条 count → 3 条分组聚合；创作中心趋势里重复 30 次的粉丝数查询 → 1 次。
+- **有界缓存**：播放去重、短信限流、刷新令牌降级存储换成 Caffeine 有界缓存；分类与推荐创作者接入 Spring Cache。
+- **写放大**：`Video` 加 `@DynamicUpdate`；HikariCP/Hibernate 批处理/响应压缩/Tomcat 连接数在配置中显式化。
+- **语法现代化**：record、sealed interface + switch 模式匹配（HTTP Range 解析）、text block SQL、`Math.clamp`、`List.getFirst()`、`instanceof` 模式、统一分页 `PageResult` 取代 5 份重复实现。
+
+### 发现并修复的真实缺陷
+
+1. `AdminService.overview` 用 `DATEDIFF('SECOND', started_at, completed_at)`，该写法只在 H2 成立，MySQL 会直接报错 —— 改为两者通用的 `TIMESTAMPDIFF(SECOND, …)`。
+2. 趋势聚合的列别名 `day` 被 H2 解析为 INTERVAL 限定符（`Data conversion error converting "DATE to INTERVAL DAY"`）—— 别名改为 `stat_day` 并按序号取值。
+3. 播放去重、短信限流、刷新令牌的降级 Map 只增不减，属于长期运行的内存泄漏 —— 改为带容量与 TTL 的 Caffeine 缓存。
+4. 计数器回写在托管实体上触发整行 UPDATE，会覆盖并发事务刚写入的列 —— 加 `@DynamicUpdate` 收敛为只写变化列。
+
+### 性能与开销实测
+
+升级前后的 A/B 压测数据（SQL 条数、RPS、p95、每请求 CPU、内存与线程、端到端传输字节、
+前端产物体积）见 **[性能与开销测试报告](./PERFORMANCE_REPORT.md)**。核心结论：19 个端点单请求
+SQL 合计 842 → 103（−87.8%），榜单吞吐 +52%~+65%，列表接口下行流量 −81%~−89%，
+200 并发下 OS 线程数 −65%。
+
+### 基于压测的第二轮优化
+
+按性能报告结论做了一轮优化并复测（2 万视频数据集）：补齐 13 个缺失索引、排序键去 `COALESCE`
+以走索引、个人内容库改 `EXISTS` 半连接、14 处分页补稳定并列键、压缩阈值降到 512B、
+JWT 黑名单查询加 Redis 失败熔断、前端把 Mock 层移出生产产物。详见
+**[性能与开销测试报告](./PERFORMANCE_REPORT.md) 第 12 节**。
+
+### Docker 国内源
+
+基础镜像与所有运行时镜像默认走 `docker.m.daocloud.io`，Maven 依赖走阿里云公共仓库，npm 走 npmmirror；全部可通过 `.env` 变量覆盖回官方源。镜像标签已在镜像代理上逐个校验存在（maven/temurin/node/nginx/mysql/redis/minio/rocketmq）。
+
+### 验证方式
+
+- `backend`：`mvn clean package` 通过，`Tests run: 18, Failures: 0, Errors: 0`。
+  - `PlatformIntegrationTest`：13 项，原有断言全部保留并通过。
+  - `QueryCountGuardTest`：2 项。其中 `videoListQueryCountIsIndependentOfPageSize` 通过包装 DataSource 统计 JDBC 语句条数，断言页大小 5 与 40 的查询条数完全相等且落在 5~15 区间；一旦重新引入 N+1 会立即失败。
+  - `EndpointCostReportTest`：3 项。逐端点输出 SQL 条数与页大小缩放曲线到 `target/perf/*.tsv`，并冒烟覆盖重写后的读取路径。
+- 两个测试类共用同一份上下文配置（`CountingDataSourceConfiguration`），Spring 测试上下文只启动一次：测试耗时从约 29 秒降到约 13 秒，并消除了多个上下文各自创建 Lettuce 客户端带来的关闭期日志噪音。
+- 打包产物 `target/video-platform-0.1.0-SNAPSHOT.jar` 可直接启动；`/actuator/health` 返回 `UP`（含 liveness/readiness 探针），分类、推荐、登录、榜单、短视频接口返回与升级前一致的 JSON 契约。
+- **未验证**：Docker 镜像构建与 compose 启动（当前环境没有 docker daemon，镜像标签仅做了远程校验）；MySQL/Redis/MinIO 生产链路；前端构建与浏览器验收。
+
+---
+
+## 2026-09-13 · 前后端联调修复记录
+
 日期：2026-09-13。环境：Windows、Node 22、Java 24（编译目标 Java 17）、Spring Boot dev profile、内存 H2、本地文件存储。
 
 ## 已修复

@@ -1,18 +1,21 @@
 /** 运行时配置：全部来自 Vite 环境变量，缺省即开发可用 */
 const env = import.meta.env;
 
-function bool(value: unknown, fallback: boolean): boolean {
-  if (value === undefined || value === null || value === '') return fallback;
-  return String(value) === 'true' || String(value) === '1';
-}
-
 export const API_BASE_URL = (env.VITE_API_BASE_URL as string | undefined) ?? '';
 
 /**
  * Mock 数据层只在显式配置 VITE_USE_MOCK=true 时开启。
  * 默认通过 Vite/Nginx 的同源反代连接真实后端。
+ *
+ * 这里刻意写成「只用 import.meta.env 字面量比较」的表达式：Vite 会在构建期把
+ * `import.meta.env.*` 替换成常量，Rollup 随即折叠 `if (USE_MOCK)` 分支并删除
+ * 对应的 `import('@/mocks')`。若改成函数调用（如 bool(...)），常量传播就失效，
+ * Mock 适配层会作为懒加载块留在生产产物里。
  */
-export const USE_MOCK = bool(env.VITE_USE_MOCK, env.MODE === 'test');
+export const USE_MOCK =
+  env.VITE_USE_MOCK === undefined || env.VITE_USE_MOCK === ''
+    ? env.MODE === 'test'
+    : env.VITE_USE_MOCK === 'true' || env.VITE_USE_MOCK === '1';
 
 export const WS_URL =
   (env.VITE_WS_URL as string | undefined) ||

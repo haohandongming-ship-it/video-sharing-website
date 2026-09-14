@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Docker 构建阶段的 Maven 镜像设置。
+
+  占位符 @MAVEN_MIRROR_URL@ 由 backend/Dockerfile 的 MAVEN_MIRROR_URL 构建参数替换，
+  默认 https://maven.aliyun.com/repository/public（阿里云公共仓库）。
+  传入空值即可回退到 Maven Central。
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+  <mirrors>
+    <mirror>
+      <id>docker-build-mirror</id>
+      <name>Docker build mirror</name>
+      <url>@MAVEN_MIRROR_URL@</url>
+      <mirrorOf>central</mirrorOf>
+    </mirror>
+  </mirrors>
+</settings>

@@ -1,14 +1,15 @@
 package com.videoshare;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options;
@@ -21,6 +22,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
+// 与 QueryCountGuardTest 使用同一份上下文配置，Spring 测试上下文缓存因此只启动一次。
+@Import(CountingDataSourceConfiguration.class)
 class PlatformIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -111,7 +114,7 @@ class PlatformIntegrationTest {
         result=mvc.perform(post("/api/v1/uploads/init").header("Authorization","Bearer "+token)
                         .header("X-Requested-With","XMLHttpRequest").contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
-        String uploadId=json.readTree(result).path("data").path("uploadId").asText();
+        String uploadId=json.readTree(result).path("data").path("uploadId").asString();
         mvc.perform(post("/api/v1/uploads/"+uploadId+"/abort").header("Authorization","Bearer "+token)
                 .header("X-Requested-With","XMLHttpRequest")).andExpect(status().isOk());
         mvc.perform(post("/api/v1/uploads/"+uploadId+"/complete").header("Authorization","Bearer "+token)
@@ -244,6 +247,6 @@ class PlatformIntegrationTest {
                 .andExpect(jsonPath("$.data.accessToken").isString())
                 .andReturn().getResponse().getContentAsString();
         JsonNode envelope = json.readTree(response);
-        return envelope.path("data").path("accessToken").asText();
+        return envelope.path("data").path("accessToken").asString();
     }
 }

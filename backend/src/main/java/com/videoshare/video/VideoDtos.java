@@ -7,5 +7,4 @@ public final class VideoDtos {
     public record Author(long id,String nickname) { }
     public record Stats(long views,long likes,long comments,long favorites) { }
     public record Detail(long id,VideoType videoType,String title,String description,String coverUrl,int duration,long categoryId,Author author,Stats stats,VideoStatus status,Instant publishedAt,boolean downloadEnabled) { }
-    public record PageData<T>(List<T> items,long total,int page,int pageSize,boolean hasMore) { }
 }

@@ -2,8 +2,15 @@ package com.videoshare.video;
 
 import jakarta.persistence.*;
 import java.time.Instant;
+import org.hibernate.annotations.DynamicUpdate;
 
-@Entity @Table(name="videos")
+/**
+ * 视频实体。
+ *
+ * <p>加上 {@link DynamicUpdate}：videos 是计数器写最频繁的表，默认的整行 UPDATE 会把
+ * 并发请求里刚被其它事务改过的列一起覆盖回去；动态更新只写真正变化的列。</p>
+ */
+@Entity @Table(name="videos") @DynamicUpdate
 public class Video {
     @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Long id;
     @Column(name="user_id",nullable=false) private Long userId;

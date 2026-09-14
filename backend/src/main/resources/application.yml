@@ -1,21 +1,48 @@
 spring:
   autoconfigure:
-    exclude: org.springframework.boot.autoconfigure.security.servlet.UserDetailsServiceAutoConfiguration
+    exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   profiles:
     default: dev
   application:
     name: video-platform
+
+  # Java 21 虚拟线程：请求处理从「线程池 + 排队」变成「一请求一虚拟线程」，
+  # 对以 JDBC/MinIO 阻塞 IO 为主的接口可以显著提高并发吞吐。
+  threads:
+    virtual:
+      enabled: true
+
   datasource:
     url: jdbc:h2:mem:video_platform;MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
     username: sa
     password: ""
     driver-class-name: org.h2.Driver
+    hikari:
+      pool-name: video-platform-pool
+      maximum-pool-size: ${DB_POOL_MAX_SIZE:20}
+      minimum-idle: ${DB_POOL_MIN_IDLE:5}
+      connection-timeout: 10000
+      validation-timeout: 3000
+      max-lifetime: 1740000
+      keepalive-time: 300000
+
   jpa:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          batch_size: 50
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
+
   flyway:
     enabled: true
+
   data:
     redis:
       repositories:
@@ -23,17 +50,46 @@ spring:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
+      timeout: 2s
+      connect-timeout: 2s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  lifecycle:
+    timeout-per-shutdown-phase: 20s
+
+server:
+  shutdown: graceful
+  compression:
+    enabled: true
+    # 实测动态/评论等列表响应在 0.9~1KB 区间，阈值下调到 512B 让它们也走 gzip
+    min-response-size: 512
+    mime-types: application/json,text/html,text/plain,text/css,application/javascript
+  tomcat:
+    max-connections: 10000
+    accept-count: 200
+    connection-timeout: 20s
+
 management:
   endpoints:
     web:
       exposure:
         include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
   health:
     redis:
       enabled: false
+
 springdoc:
   swagger-ui:
     path: /swagger-ui.html
+
 app:
   cors:
     # Override with CORS_ALLOWED_ORIGIN_PATTERNS in a deployed environment.

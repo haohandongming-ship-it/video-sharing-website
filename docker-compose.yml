@@ -1,8 +1,11 @@
 name: video-sharing-platform
 
+# 所有运行时镜像默认通过国内镜像代理拉取；国内网络下无需配置 Docker daemon 镜像加速。
+# 在根目录 .env 中设置 DOCKER_REGISTRY=docker.io 即可回退官方镜像。
+
 services:
   mysql:
-    image: mysql:8.4
+    image: ${DOCKER_REGISTRY:-docker.m.daocloud.io}/library/mysql:8.4
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-video_platform}
@@ -19,7 +22,7 @@ services:
       retries: 15
 
   redis:
-    image: redis:7.4-alpine
+    image: ${DOCKER_REGISTRY:-docker.m.daocloud.io}/library/redis:7.4-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
     volumes:
@@ -31,7 +34,7 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio:RELEASE.2025-07-23T15-54-02Z
+    image: ${DOCKER_REGISTRY:-docker.m.daocloud.io}/minio/minio:RELEASE.2025-07-23T15-54-02Z
     restart: unless-stopped
     command: server /data --console-address :9001
     environment:
@@ -44,14 +47,14 @@ services:
       - minio_data:/data
 
   rocketmq-nameserver:
-    image: apache/rocketmq:5.3.3
+    image: ${DOCKER_REGISTRY:-docker.m.daocloud.io}/apache/rocketmq:5.3.3
     restart: unless-stopped
     command: sh mqnamesrv
     environment:
       JAVA_OPT_EXT: -Xms256m -Xmx256m
 
   rocketmq-broker:
-    image: apache/rocketmq:5.3.3
+    image: ${DOCKER_REGISTRY:-docker.m.daocloud.io}/apache/rocketmq:5.3.3
     restart: unless-stopped
     command: sh mqbroker -n rocketmq-nameserver:9876
     environment:
@@ -62,7 +65,14 @@ services:
       - rocketmq_data:/home/rocketmq/store
 
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        # 构建期基础镜像（默认国内代理源，可在 .env 覆盖回官方镜像）
+        MAVEN_IMAGE: ${MAVEN_IMAGE:-docker.m.daocloud.io/library/maven:3.9.11-eclipse-temurin-21-alpine}
+        JRE_IMAGE: ${JRE_IMAGE:-docker.m.daocloud.io/library/eclipse-temurin:21-jre-alpine}
+        # 构建期依赖源（留空回退 Maven Central）
+        MAVEN_MIRROR_URL: ${MAVEN_MIRROR_URL:-https://maven.aliyun.com/repository/public}
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
@@ -94,6 +104,10 @@ services:
     build:
       context: ./frontend
       args:
+        NODE_IMAGE: ${NODE_IMAGE:-docker.m.daocloud.io/library/node:22-alpine}
+        NGINX_IMAGE: ${NGINX_IMAGE:-docker.m.daocloud.io/library/nginx:1.27-alpine}
+        # 构建期 npm 源（npmmirror 为阿里云公共 npm 镜像）
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmmirror.com}
         VITE_USE_MOCK: "false"
     restart: unless-stopped
     ports:
