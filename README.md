@@ -50,7 +50,7 @@ http://<运行项目电脑的IPv4>:5173
 docker compose --env-file .env up --build
 ```
 
-复制 `.env.example` 为根目录 `.env`，并为 MySQL、Redis、MinIO、JWT RS256 密钥、数据加密密钥和本地上传签名密钥设置强随机值。后端生产 profile 会执行 Flyway 迁移 `V1`–`V5`，提供 REST、Swagger、SSE 榜单和 STOMP WebSocket 通道。
+复制 `.env.example` 为根目录 `.env`，并为 MySQL、Redis、MinIO、JWT RS256 密钥、数据加密密钥和本地上传签名密钥设置强随机值。后端生产 profile 会执行 Flyway 迁移 `V1`–`V7`，提供 REST、Swagger、SSE 榜单和 STOMP WebSocket 通道。反向代理是唯一入口时保持 `AUTH_TRUST_PROXY_HEADERS=true`（`.env.example` 默认值），登录限流才能按真实客户端地址计数；直接在公网暴露 8080 时应设为 `false`。
 
 ### Docker 国内镜像源
 
@@ -69,14 +69,21 @@ docker compose --env-file .env up --build
 ## 质量门禁
 
 ```powershell
-cd backend; mvn test          # 需要 JDK 21：15 项测试（含 N+1 查询次数护栏）
+cd backend; mvn test          # 需要 JDK 21：29 项测试（含 N+1 查询次数护栏与测试报告回归）
 cd frontend; npm exec --yes pnpm@10.18.3 -- verify
-node scripts/cdp-check.mjs http://localhost:5173
+```
+
+前后端都启动后，可再跑两个端到端门禁（结果即验收证据）：
+
+```powershell
+node scripts/report-regression-e2e.mjs http://localhost:5173   # 报告缺陷回归 63 项，含真实分片上传→审核→播放→续播闭环
+cd frontend; node scripts/cdp-check.mjs http://localhost:5173  # 真实浏览器 30 项：路由、交互、控制台错误与横向溢出
 ```
 
 浏览器脚本应从 `frontend` 目录运行；Windows 需要通过 `CHROME_BIN` 指定浏览器可执行文件。
-默认开发数据库是内存 H2，后端重启会重建演示数据，不适合保存正式内容。
-已完成的检查和已知功能缺口见 [测试报告](./TEST_REPORT.md)。
+开发 profile 使用文件 H2（`./data/video_platform.mv.db`）与本地对象存储，演示数据只在库为空时写入，
+重启不会覆盖已注册账号与上传内容；正式内容请使用「生产依赖」一节部署。
+已完成的检查和已知功能缺口见 [测试报告](./TEST_REPORT.md) 与 [全面测试报告](./COMPREHENSIVE_TEST_REPORT.md)。
 
 ## 文档
 
