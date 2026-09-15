@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Heart, MessageCircle, MoreHorizontal, Repeat2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { copyText } from '@/lib/clipboard';
 import { formatCount, formatRelative } from '@/lib/format';
 import type { FeedPost } from '@/api/types';
 import { Avatar, Dropdown, Tag } from '@/components/ui';
@@ -86,10 +87,14 @@ export function FeedCard({ post, detail, onDelete, onRepost, className }: FeedCa
               key: 'copy',
               label: '复制链接',
               onSelect: () => {
-                void navigator.clipboard
-                  ?.writeText(`${window.location.origin}/feed/${post.id}`)
-                  .then(() => toast({ title: '链接已复制', tone: 'success' }))
-                  .catch(() => toast({ title: '复制失败，请手动复制地址栏链接', tone: 'warning' }));
+                // 局域网 http 下没有 navigator.clipboard：copyText 会降级，并按真实结果提示
+                void copyText(`${window.location.origin}/feed/${post.id}`).then((copied) =>
+                  toast(
+                    copied
+                      ? { title: '链接已复制', tone: 'success' }
+                      : { title: '复制失败，请手动复制地址栏链接', tone: 'warning' },
+                  ),
+                );
               },
             },
             { key: 'report', label: '举报', onSelect: () => toast({ title: '已进入举报流程', tone: 'info' }) },

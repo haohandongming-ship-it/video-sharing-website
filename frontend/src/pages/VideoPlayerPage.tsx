@@ -10,6 +10,7 @@ import {
   Theater,
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { copyText } from '@/lib/clipboard';
 import { formatCount, formatDate, formatRelative, formatTimecode } from '@/lib/format';
 import { QUALITY_LABELS, VIDEO_STATUS_LABELS } from '@/lib/constants';
 import {
@@ -385,10 +386,14 @@ export default function VideoPlayerPage() {
                     label: '复制当前时间点链接',
                     onSelect: () => {
                       const time = usePlayerStore.getState().currentTime;
-                      void navigator.clipboard
-                        ?.writeText(`${window.location.origin}/video/${videoId}?t=${Math.floor(time)}`)
-                        .then(() => toast({ title: '已复制带时间点的链接', tone: 'success' }))
-                        .catch(() => toast({ title: '复制失败', tone: 'warning' }));
+                      // 局域网 http 下没有 navigator.clipboard：copyText 会降级，并按真实结果提示
+                      void copyText(`${window.location.origin}/video/${videoId}?t=${Math.floor(time)}`).then((copied) =>
+                        toast(
+                          copied
+                            ? { title: '已复制带时间点的链接', tone: 'success' }
+                            : { title: '复制失败，请手动复制地址栏链接', tone: 'warning' },
+                        ),
+                      );
                     },
                   },
                   { key: 'notify', label: '接收该 UP 主更新提醒', onSelect: () => subscribe.mutate(true) },

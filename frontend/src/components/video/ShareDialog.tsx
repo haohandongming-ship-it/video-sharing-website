@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Check, Copy, Link2, MessageCircle, Send, Share2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { copyText } from '@/lib/clipboard';
 import { EASE } from '@/lib/motion';
 import { useUiStore } from '@/stores/uiStore';
 import { Button, Modal } from '@/components/ui';
@@ -22,20 +23,15 @@ export function ShareDialog({ open, onClose, title, path, coverUrl }: ShareDialo
   const url = typeof window !== 'undefined' ? `${window.location.origin}${path}` : path;
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(url);
-    } catch {
-      // 剪贴板不可用时降级为手动选择
-      const input = document.createElement('input');
-      input.value = url;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand('copy');
-      document.body.removeChild(input);
-    }
-    setCopied(true);
-    toast({ title: '链接已复制', description: '可直接粘贴分享给好友', tone: 'success' });
-    window.setTimeout(() => setCopied(false), 2000);
+    // 非安全上下文（局域网 http）没有 navigator.clipboard，copyText 内部会降级到 execCommand
+    const copied = await copyText(url);
+    setCopied(copied);
+    toast(
+      copied
+        ? { title: '链接已复制', description: '可直接粘贴分享给好友', tone: 'success' }
+        : { title: '复制失败，请手动复制', description: url, tone: 'warning' },
+    );
+    if (copied) window.setTimeout(() => setCopied(false), 2000);
   };
 
   const targets = [

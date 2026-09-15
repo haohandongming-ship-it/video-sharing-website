@@ -1,5 +1,6 @@
 import { API_BASE_URL, BIZ_CODE, REQUEST_TIMEOUT, USE_MOCK } from './config';
 import { authBridge } from './authBridge';
+import { randomId } from '@/lib/id';
 import type { ApiEnvelope } from './types';
 
 export class ApiError extends Error {
@@ -139,7 +140,7 @@ async function execute<T>(path: string, options: RequestOptions = {}): Promise<T
   }
   if (token) headers.set('Authorization', `Bearer ${token}`);
   if (idempotent && !headers.has('Idempotency-Key')) {
-    headers.set('Idempotency-Key', crypto.randomUUID());
+    headers.set('Idempotency-Key', randomId());
   }
 
   const controller = new AbortController();

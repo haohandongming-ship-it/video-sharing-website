@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { createSha256 } from '@/lib/sha256';
 
 /**
  * 上传任务状态机（文档 10.1 上传流程）
@@ -79,45 +80,30 @@ export const useUploadStore = create<UploadState>((set) => ({
 }));
 
 /**
- * 计算 SHA-256：优先使用 Web Crypto streaming（大文件分块读取，避免一次性占用内存）。
- * 真实实现应使用 worker 避免阻塞主线程；此处对大文件按 4MB 分块读取。
+ * 计算 SHA-256：使用纯 JS 增量实现（`@/lib/sha256`）。
+ *
+ * 不用 `crypto.subtle` 的原因有两个，且都是实际踩到的问题：
+ * 1. 它只在安全上下文（https / localhost）存在，局域网设备用 `http://<内网IP>:5173` 打开时是
+ *    `undefined`，上传会在算哈希这步直接失败；
+ * 2. Web Crypto 没有增量 API，老实现要把整个文件拼成一块内存，几百 MB 的短视频在手机上容易 OOM。
+ *
+ * 现在按 4MB 分片流式喂给哈希器：内存恒定，进度照常上报，任何浏览器上下文都能跑。
  */
 export async function computeSha256(
   file: File,
   onProgress?: (ratio: number) => void,
 ): Promise<string> {
   const chunkSize = 4 * 1024 * 1024;
-  const totalChunks = Math.ceil(file.size / chunkSize);
+  const totalChunks = Math.max(1, Math.ceil(file.size / chunkSize));
+  const hasher = createSha256();
 
-  // 小文件直接计算，避免额外开销
-  if (file.size <= chunkSize) {
-    const buffer = await file.arrayBuffer();
-    const digest = await crypto.subtle.digest('SHA-256', buffer);
-    onProgress?.(1);
-    return toHex(digest);
-  }
-
-  // 大文件：分块拼接后再计算（Web Crypto 暂无增量 API，此处在性能与内存间取折中）
-  const chunks: ArrayBuffer[] = [];
   for (let index = 0; index < totalChunks; index += 1) {
     const slice = file.slice(index * chunkSize, Math.min((index + 1) * chunkSize, file.size));
-    chunks.push(await slice.arrayBuffer());
+    hasher.update(new Uint8Array(await slice.arrayBuffer()));
     onProgress?.((index + 1) / totalChunks);
   }
-  const merged = new Uint8Array(chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0));
-  let offset = 0;
-  for (const chunk of chunks) {
-    merged.set(new Uint8Array(chunk), offset);
-    offset += chunk.byteLength;
-  }
-  const digest = await crypto.subtle.digest('SHA-256', merged);
-  return toHex(digest);
-}
-
-function toHex(buffer: ArrayBuffer): string {
-  return Array.from(new Uint8Array(buffer))
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
+  onProgress?.(1);
+  return hasher.hex();
 }
 
 /** 文件魔数校验（文档 13.3：伪造扩展名/魔数必须被拒绝） */
