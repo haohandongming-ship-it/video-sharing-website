@@ -9,7 +9,6 @@ import io.jsonwebtoken.Jwts;
 import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
@@ -18,14 +17,14 @@ import java.util.Base64;
 import java.util.Date;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 
 /**
  * RSA 签名令牌的签发与校验。
  *
  * <p>密钥只在启动时解析一次；PEM 头尾的正则预编译为常量，避免每次解析密钥都
- * 重新编译 Pattern。生产环境强制要求显式配置密钥，禁止回落到随机生成的密钥对。</p>
+ * 重新编译 Pattern。所有环境一律强制显式配置密钥，禁止回落到随机生成的密钥对
+ * （生成命令见 scripts/generate-jwt-keys.mjs）。</p>
  */
 @Service
 public class JwtService {
@@ -33,14 +32,15 @@ public class JwtService {
     private static final Pattern PEM_HEADER = Pattern.compile("-----BEGIN [^-]+-----");
     private static final Pattern PEM_FOOTER = Pattern.compile("-----END [^-]+-----");
     private static final Pattern WHITESPACE = Pattern.compile("\\s");
-    private static final int RSA_KEY_SIZE = 2048;
+    /** RSA-4096 为 NIST SP 800-57 超集强度；生产环境使用外部注入密钥，此长度仅用于本地开发自动生成。 */
+    private static final int RSA_KEY_SIZE = 4096;
 
     private final AuthProperties props;
     private final KeyPair keys;
 
-    public JwtService(AuthProperties props, Environment env) {
+    public JwtService(AuthProperties props) {
         this.props = props;
-        this.keys = loadKeys(props, env);
+        this.keys = loadKeys(props);
     }
 
     public Token create(User user) {
@@ -76,24 +76,21 @@ public class JwtService {
 
     public record Token(String value, String jti, Instant expiresAt) { }
 
-    private static KeyPair loadKeys(AuthProperties properties, Environment env) {
+    private static KeyPair loadKeys(AuthProperties properties) {
         String privateKey = properties.privateKeyBase64();
         String publicKey = properties.publicKeyBase64();
         boolean configured = privateKey != null && !privateKey.isBlank() && publicKey != null && !publicKey.isBlank();
+        if (!configured) {
+            throw new IllegalStateException(
+                    "缺少 JWT RS256 密钥：请先运行 node scripts/generate-jwt-keys.mjs 并配置 "
+                            + "JWT_PRIVATE_KEY_BASE64 与 JWT_PUBLIC_KEY_BASE64 环境变量");
+        }
         try {
-            if (configured) {
-                KeyFactory factory = KeyFactory.getInstance("RSA");
-                Base64.Decoder decoder = Base64.getMimeDecoder();
-                return new KeyPair(
-                        factory.generatePublic(new X509EncodedKeySpec(decoder.decode(stripPem(publicKey)))),
-                        factory.generatePrivate(new PKCS8EncodedKeySpec(decoder.decode(stripPem(privateKey)))));
-            }
-            if (env.matchesProfiles("prod")) {
-                throw new IllegalStateException("生产环境必须配置 JWT_PRIVATE_KEY_BASE64 与 JWT_PUBLIC_KEY_BASE64");
-            }
-            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
-            generator.initialize(RSA_KEY_SIZE);
-            return generator.generateKeyPair();
+            KeyFactory factory = KeyFactory.getInstance("RSA");
+            Base64.Decoder decoder = Base64.getMimeDecoder();
+            return new KeyPair(
+                    factory.generatePublic(new X509EncodedKeySpec(decoder.decode(stripPem(publicKey)))),
+                    factory.generatePrivate(new PKCS8EncodedKeySpec(decoder.decode(stripPem(privateKey)))));
         } catch (GeneralSecurityException | IllegalArgumentException ex) {
             throw new IllegalStateException("RSA 签名密钥格式无效", ex);
         }

@@ -1,0 +1,155 @@
+[
+  {
+    "name": "setup_admin_login",
+    "status": 200,
+    "gotToken": true
+  },
+  {
+    "name": "setup_register_lowpriv",
+    "status": 409,
+    "code": 40009
+  },
+  {
+    "name": "setup_lowpriv_login",
+    "status": 200,
+    "gotToken": true
+  },
+  {
+    "name": "sqli_probe",
+    "path": "/api/v1/videos/search?q=' OR 1=1--",
+    "status": 200,
+    "code": 0,
+    "leaked": false
+  },
+  {
+    "name": "sqli_probe",
+    "path": "/api/v1/videos/search?q=; DROP TABLE users",
+    "status": 200,
+    "code": 0,
+    "leaked": false
+  },
+  {
+    "name": "sqli_probe",
+    "path": "/api/v1/videos/1 OR 1=1",
+    "status": 400,
+    "code": 40001,
+    "leaked": false
+  },
+  {
+    "name": "sqli_probe",
+    "path": "/api/v1/users/1 UNION SELECT 1",
+    "status": 400,
+    "code": 40001,
+    "leaked": false
+  },
+  {
+    "name": "xss_nickname_write",
+    "status": 200,
+    "echoed": true
+  },
+  {
+    "name": "xss_feed_write",
+    "status": 200,
+    "code": 0,
+    "echoed": false
+  },
+  {
+    "name": "xss_feed_readback",
+    "status": 200,
+    "rawTagInApi": true,
+    "note": "API 返回原文为预期（前端 React 默认转义渲染），需前端渲染侧转义"
+  },
+  {
+    "name": "idor_put_me_with_forged_id",
+    "status": 200,
+    "myId": 5,
+    "note": "服务端应以会话身份为准"
+  },
+  {
+    "name": "idor_other_conversation",
+    "status": 403,
+    "code": 40301
+  },
+  {
+    "name": "privilege_escalation",
+    "method": "GET",
+    "path": "/api/v1/admin/overview",
+    "status": 403,
+    "code": 40301,
+    "blocked": true
+  },
+  {
+    "name": "privilege_escalation",
+    "method": "GET",
+    "path": "/api/v1/admin/users",
+    "status": 403,
+    "code": 40301,
+    "blocked": true
+  },
+  {
+    "name": "privilege_escalation",
+    "method": "PUT",
+    "path": "/api/v1/admin/users/2/status",
+    "status": 403,
+    "code": 40301,
+    "blocked": true
+  },
+  {
+    "name": "privilege_escalation",
+    "method": "GET",
+    "path": "/api/v1/admin/audit-logs",
+    "status": 403,
+    "code": 40301,
+    "blocked": true
+  },
+  {
+    "name": "admin_anonymous",
+    "status": 401,
+    "blocked": true
+  },
+  {
+    "name": "jwt_forgery_none-alg",
+    "status": 401,
+    "blocked": true
+  },
+  {
+    "name": "jwt_forgery_bad-signature",
+    "status": 401,
+    "blocked": true
+  },
+  {
+    "name": "login_bruteforce_protection",
+    "lockSeen": null,
+    "note": "8 次内未触发限速（需人工确认策略）"
+  },
+  {
+    "name": "login_valid_after_failures",
+    "status": 200,
+    "code": 0
+  },
+  {
+    "name": "security_headers",
+    "server": "(absent)",
+    "xContentTypeOptions": "nosniff",
+    "xFrameOptions": "DENY",
+    "contentSecurityPolicy": "(absent)",
+    "strictTransportSecurity": "(absent)",
+    "cacheControl": "no-cache, no-store, max-age=0, must-revalidate"
+  },
+  {
+    "name": "err_404_shape",
+    "status": 404,
+    "body": "{\"code\":40401,\"message\":\"视频不存在\",\"data\":null,\"timestamp\":1789445138559}"
+  },
+  {
+    "name": "err_videos_root",
+    "status": 500,
+    "code": 50001
+  },
+  {
+    "name": "err_oversized_page",
+    "status": 500,
+    "code": 50001,
+    "itemsLen": 0
+  }
+]

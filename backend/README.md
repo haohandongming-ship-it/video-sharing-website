@@ -6,9 +6,12 @@ Hibernate 7、Jackson 3、Flyway 12、Tomcat 11 之上。功能覆盖认证与�
 
 ## 本地开发
 
-默认 profile 使用 H2、本地文件存储，首次启动无需外部服务：
+默认 profile 使用 H2、本地文件存储。JWT RS256 密钥在所有环境（含本地开发）都必须显式配置，
+先在仓库根目录运行 `node scripts/generate-jwt-keys.mjs` 生成并设置
+`JWT_PRIVATE_KEY_BASE64` / `JWT_PUBLIC_KEY_BASE64` 环境变量：
 
 ```bash
+export $(node scripts/generate-jwt-keys.mjs | grep JWT_)
 cd backend
 mvn spring-boot:run
 ```

@@ -7,7 +7,15 @@
 
 ## 快速开始
 
-开发环境可以直接运行 H2 + 本地文件存储：
+开发环境可以直接运行 H2 + 本地文件存储。JWT RS256 密钥在所有环境（含本地开发）都必须显式配置，
+先在仓库根目录生成一次并设置环境变量：
+
+```powershell
+node scripts/generate-jwt-keys.mjs   # 输出两个环境变量
+# PowerShell：
+$env:JWT_PRIVATE_KEY_BASE64="<脚本输出的私钥行>"
+$env:JWT_PUBLIC_KEY_BASE64="<脚本输出的公钥行>"
+```
 
 ```powershell
 cd backend

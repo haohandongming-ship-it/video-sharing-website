@@ -8,3 +8,4 @@ frontend/dist/
 frontend/coverage/
 *.log
 *.tsbuildinfo
+.mimosa/

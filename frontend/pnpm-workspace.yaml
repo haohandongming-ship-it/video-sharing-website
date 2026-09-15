@@ -1,6 +1,5 @@
 allowBuilds:
-  '0': esbuild
-  esbuild: set this to true or false
+  esbuild: true
 minimumReleaseAgeExclude:
   - '@rollup/rollup-android-arm64@4.63.2'
   - '@rollup/rollup-openbsd-x64@4.63.2'

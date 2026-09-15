@@ -127,7 +127,7 @@ export default function SettingsPage() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const [oldPassword, setOldPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
+  const [nextPwd, setNextPwd] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPasswords, setShowPasswords] = useState(false);
   const [passwordErrors, setPasswordErrors] = useState<Record<string, string>>({});
@@ -250,16 +250,16 @@ export default function SettingsPage() {
   const changePassword = async () => {
     const next: Record<string, string> = {};
     if (oldPassword.length < 6) next.oldPassword = '请输入原密码';
-    if (newPassword.length < 8) next.newPassword = '新密码至少 8 位';
-    if (newPassword === oldPassword) next.newPassword = '新密码不能与原密码相同';
-    if (confirmPassword !== newPassword) next.confirmPassword = '两次输入的新密码不一致';
+    if (nextPwd.length < 8) next.nextPwd = '新密码至少 8 位';
+    if (nextPwd === oldPassword) next.nextPwd = '新密码不能与原密码相同';
+    if (confirmPassword !== nextPwd) next.confirmPassword = '两次输入的新密码不一致';
     setPasswordErrors(next);
     if (Object.keys(next).length > 0) return;
     setSavingPassword(true);
     try {
-      await authApi.changePassword(oldPassword, newPassword);
+      await authApi.changePassword(oldPassword, nextPwd);
       setOldPassword('');
-      setNewPassword('');
+      setNextPwd('');
       setConfirmPassword('');
       toast('密码已修改', '其他设备需重新登录', 'success');
     } catch (error) {
@@ -458,11 +458,11 @@ export default function SettingsPage() {
                   {...passwordTypeProps}
                   aria-label="新密码"
                   icon={<Lock className="size-4" aria-hidden />}
-                  value={newPassword}
-                  invalid={Boolean(passwordErrors.newPassword)}
-                  onChange={(event) => setNewPassword(event.target.value)}
+                  value={nextPwd}
+                  invalid={Boolean(passwordErrors.nextPwd)}
+                  onChange={(event) => setNextPwd(event.target.value)}
                 />
-                {passwordErrors.newPassword && <span className="text-xs text-brand">{passwordErrors.newPassword}</span>}
+                {passwordErrors.nextPwd && <span className="text-xs text-brand">{passwordErrors.nextPwd}</span>}
               </label>
               <label className="flex flex-col gap-1.5">
                 <span className="text-xs font-medium text-fg-muted">确认新密码</span>
@@ -479,7 +479,7 @@ export default function SettingsPage() {
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="flex flex-wrap items-center gap-2">
-                <StrengthMeter password={newPassword} />
+                <StrengthMeter password={nextPwd} />
                 <Button
                   variant="ghost"
                   size="sm"

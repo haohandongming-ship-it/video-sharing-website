@@ -113,13 +113,13 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
   const [rNickname, setRNickname] = useState('');
   const [rEmail, setREmail] = useState('');
   const [rPhone, setRPhone] = useState('');
-  const [rPassword, setRPassword] = useState('');
+  const [signupPwd, setSignupPwd] = useState('');
   const [rConfirm, setRConfirm] = useState('');
   const [agreed, setAgreed] = useState(false);
 
   const [fPhone, setFPhone] = useState('');
   const [fCode, setFCode] = useState('');
-  const [fPassword, setFPassword] = useState('');
+  const [resetPwd, setResetPwd] = useState('');
   const [fConfirm, setFConfirm] = useState('');
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -208,8 +208,8 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
         rNickname: rNickname.trim().length < 2,
         rEmail: !EMAIL_PATTERN.test(rEmail),
         rPhone: Boolean(rPhone) && !PHONE_PATTERN.test(rPhone),
-        rPassword: rPassword.length < 8,
-        rConfirm: rConfirm !== rPassword,
+        signupPwd: signupPwd.length < 8,
+        rConfirm: rConfirm !== signupPwd,
         agreed: !agreed,
       },
       {
@@ -217,7 +217,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
         rNickname: '昵称至少 2 个字符',
         rEmail: '请输入有效的邮箱地址',
         rPhone: '请输入 11 位手机号，或留空',
-        rPassword: '密码至少 8 位',
+        signupPwd: '密码至少 8 位',
         rConfirm: '两次输入的密码不一致',
         agreed: '请先阅读并同意《用户协议》与《隐私政策》',
       },
@@ -229,7 +229,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
         username: rUsername.trim(),
         nickname: rNickname.trim(),
         email: rEmail.trim(),
-        password: rPassword,
+        password: signupPwd,
         phone: rPhone || undefined,
         agreeTerms: true,
       });
@@ -245,20 +245,20 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
       {
         fPhone: !PHONE_PATTERN.test(fPhone),
         fCode: !CODE_PATTERN.test(fCode),
-        fPassword: fPassword.length < 8,
-        fConfirm: fConfirm !== fPassword,
+        resetPwd: resetPwd.length < 8,
+        fConfirm: fConfirm !== resetPwd,
       },
       {
         fPhone: '请输入 11 位手机号',
         fCode: '请输入 6 位数字验证码',
-        fPassword: '新密码至少 8 位',
+        resetPwd: '新密码至少 8 位',
         fConfirm: '两次输入的密码不一致',
       },
     );
     if (!ok) return;
     clearError();
     try {
-      await authApi.resetPassword({ phone: fPhone, code: fCode, password: fPassword });
+      await authApi.resetPassword({ phone: fPhone, code: fCode, password: resetPwd });
       setSmsPhone(fPhone);
       setMode('login');
       setMethod('sms');
@@ -304,7 +304,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
     </Button>
   );
 
-  const strength = strengthOf(rPassword);
+  const strength = strengthOf(signupPwd);
 
   return (
     <div className="flex min-h-dvh flex-col lg:flex-row">
@@ -529,11 +529,11 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                     placeholder="建议混合字母与数字"
                     aria-label="密码"
                     icon={<Lock className="size-4" aria-hidden />}
-                    value={rPassword}
-                    invalid={Boolean(errors.rPassword)}
-                    onChange={(event) => setRPassword(event.target.value)}
+                    value={signupPwd}
+                    invalid={Boolean(errors.signupPwd)}
+                    onChange={(event) => setSignupPwd(event.target.value)}
                   />,
-                  errors.rPassword,
+                  errors.signupPwd,
                   <span className="flex items-center gap-2">
                     <span className="h-1 w-24 overflow-hidden rounded-pill bg-surface-3" aria-hidden>
                       <span className={`block h-full rounded-pill ${strength.bar}`} style={{ width: `${strength.percent}%` }} />
@@ -626,12 +626,12 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                     placeholder="至少 8 位"
                     aria-label="新密码"
                     icon={<Lock className="size-4" aria-hidden />}
-                    value={fPassword}
-                    invalid={Boolean(errors.fPassword)}
-                    onChange={(event) => setFPassword(event.target.value)}
+                    value={resetPwd}
+                    invalid={Boolean(errors.resetPwd)}
+                    onChange={(event) => setResetPwd(event.target.value)}
                   />,
-                  errors.fPassword,
-                  <span className="text-xs text-fg-muted">密码强度：{strengthOf(fPassword).label}</span>,
+                  errors.resetPwd,
+                  <span className="text-xs text-fg-muted">密码强度：{strengthOf(resetPwd).label}</span>,
                 )}
                 {field(
                   '确认新密码',
