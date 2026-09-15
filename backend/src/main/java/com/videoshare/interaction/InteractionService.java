@@ -48,6 +48,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class InteractionService {
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entities;
 
     private static final Duration VIEW_DEDUP_WINDOW = Duration.ofHours(24);
     private static final long VIEW_DEDUP_MILLIS = VIEW_DEDUP_WINDOW.toMillis();
@@ -109,13 +111,18 @@ public class InteractionService {
 
     @Transactional
     public Map<String, Object> progress(long userId, long videoId, int seconds) {
-        accessibleVideo(videoId, userId);
+        jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",userId);
+        Video video=accessibleVideo(videoId, userId);
+        int duration=video.getDuration();
+        // 未转码完成的上传视频 duration 仍为 0：此时不能把进度压成 0，否则续播位置永远丢失。
+        seconds=duration>0?Math.min(Math.max(0,seconds),duration):Math.max(0,seconds);
+        boolean finished=duration>0 && seconds>=duration;
         Timestamp now = Timestamp.from(Instant.now());
         int updated = jdbc.update("UPDATE play_records SET progress=?,finished=?,updated_at=? WHERE user_id=? AND video_id=?",
-                seconds, false, now, userId, videoId);
+                seconds, finished, now, userId, videoId);
         if (updated == 0) {
             jdbc.update("INSERT INTO play_records(user_id,video_id,progress,finished,updated_at) VALUES(?,?,?,?,?)",
-                    userId, videoId, seconds, false, now);
+                    userId, videoId, seconds, finished, now);
         }
         return Map.of("saved", true, "progress", seconds);
     }
@@ -292,6 +299,7 @@ public class InteractionService {
 
     @Transactional
     public Map<String, Object> reaction(long userId, long videoId, String type, boolean active) {
+        jdbc.queryForList("SELECT id FROM videos WHERE id=? FOR UPDATE", videoId);
         Video v = accessibleVideo(videoId, userId);
         boolean existed = views.liked(userId, "VIDEO", videoId, type);
         if (active && !existed) {
@@ -301,12 +309,14 @@ public class InteractionService {
             jdbc.update("DELETE FROM likes WHERE user_id=? AND target_type='VIDEO' AND target_id=?", userId, videoId);
         }
         ReactionCounts counts = reactionCounts(videoId);
-        v.setCounters(v.getViewCount(), counts.likes(), counts.dislikes(), v.getCommentCount(), v.getFavoriteCount());
+        jdbc.update("UPDATE videos SET like_count=?,dislike_count=? WHERE id=?",counts.likes(),counts.dislikes(),videoId);
+        entities.refresh(v);
         return Map.of("active", active, "count", "LIKE".equals(type) ? counts.likes() : counts.dislikes());
     }
 
     @Transactional
     public Map<String, Object> favorite(long userId, long videoId, boolean active, Long folderId) {
+        jdbc.queryForList("SELECT id FROM videos WHERE id=? FOR UPDATE", videoId);
         Video v = accessibleVideo(videoId, userId);
         if (active && folderId != null && !views.bool("SELECT COUNT(*)>0 FROM folders WHERE id=? AND user_id=?", folderId, userId)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权使用该收藏夹");
@@ -318,13 +328,16 @@ public class InteractionService {
             jdbc.update("DELETE FROM favorites WHERE user_id=? AND video_id=?", userId, videoId);
         }
         long count = views.count("SELECT COUNT(*) FROM favorites WHERE video_id=?", videoId);
-        v.setCounters(v.getViewCount(), v.getLikeCount(), v.getDislikeCount(), v.getCommentCount(), count);
+        jdbc.update("UPDATE videos SET favorite_count=? WHERE id=?",count,videoId);
+        entities.refresh(v);
         return Map.of("active", active, "count", count);
     }
 
     @Transactional
     public Map<String, Object> subscribe(long userId, long videoId, boolean active) {
+        jdbc.queryForList("SELECT id FROM users WHERE id=? FOR UPDATE",userId);
         Video v = accessibleVideo(videoId, userId);
+        if(v.getUserId()==userId) throw new ApiException(ErrorCode.VALIDATION,"不能关注自己");
         boolean exists = views.bool("SELECT COUNT(*)>0 FROM subscriptions WHERE user_id=? AND target_type='USER' AND target_id=?",
                 userId, v.getUserId());
         if (active && !exists) {
@@ -388,6 +401,7 @@ public class InteractionService {
         if (sanitized.isBlank() || sanitized.length() > 1000) {
             throw new ApiException(ErrorCode.VALIDATION, "评论长度应为 1-1000 字");
         }
+        jdbc.queryForList("SELECT id FROM videos WHERE id=? FOR UPDATE",videoId);
         Video v = accessibleVideo(videoId, userId);
         Long rootId = null;
         if (parentId != null) {
@@ -412,12 +426,14 @@ public class InteractionService {
         long commentId = Objects.requireNonNull(keys.getKey()).longValue();
         if (rootId != null) jdbc.update("UPDATE comments SET reply_count=reply_count+1 WHERE id=?", rootId);
         long total = views.count("SELECT COUNT(*) FROM comments WHERE video_id=? AND status='VISIBLE'", videoId);
-        v.setCounters(v.getViewCount(), v.getLikeCount(), v.getDislikeCount(), total, v.getFavoriteCount());
+        jdbc.update("UPDATE videos SET comment_count=? WHERE id=?",total,videoId);
+        entities.refresh(v);
         return commentById(commentId, userId);
     }
 
     @Transactional
     public Map<String, Object> likeComment(long userId, long id, boolean active) {
+        jdbc.queryForList("SELECT id FROM comments WHERE id=? FOR UPDATE",id);
         commentById(id, userId);
         boolean existed = views.liked(userId, "COMMENT", id, "LIKE");
         if (active && !existed) {
@@ -436,6 +452,7 @@ public class InteractionService {
         long authorId = ((Number) ((Map<?, ?>) row.get("user")).get("id")).longValue();
         if (authorId != userId && !admin) throw new ApiException(ErrorCode.FORBIDDEN, "不能删除他人的评论");
         long videoId = ((Number) row.get("videoId")).longValue();
+        jdbc.queryForList("SELECT id FROM videos WHERE id=? FOR UPDATE",videoId);
         jdbc.update("UPDATE comments SET status='DELETED',content='该评论已删除' WHERE id=?", id);
         Object rootId = row.get("rootId");
         if (rootId != null) {
@@ -445,7 +462,8 @@ public class InteractionService {
         }
         long total = views.count("SELECT COUNT(*) FROM comments WHERE video_id=? AND status='VISIBLE'", videoId);
         Video v = accessibleVideo(videoId, userId);
-        v.setCounters(v.getViewCount(), v.getLikeCount(), v.getDislikeCount(), total, v.getFavoriteCount());
+        jdbc.update("UPDATE videos SET comment_count=? WHERE id=?",total,videoId);
+        entities.refresh(v);
     }
 
     public Map<String, Object> commentById(long id, Long viewer) {

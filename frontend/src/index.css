@@ -7,6 +7,19 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* 移动端把作者/分区这类 16px 高的文字链接的命中区撑到 44px。
+   用伪元素扩大热区而不是改 display/行高：卡片行高不变、截断省略号继续生效。 */
+@media (max-width: 639px) {
+  a[href^="/user/"], a[href*="category="], a[href*="categoryId="] {
+    position: relative;
+  }
+  a[href^="/user/"]::after, a[href*="category="]::after, a[href*="categoryId="]::after {
+    content: '';
+    position: absolute;
+    inset: -14px 0;
+  }
+}
+
 :root {
   --c-canvas: #fafafa;
   --c-surface: #ffffff;
@@ -15,7 +28,7 @@
   --c-line: #e5e5e5;
   --c-fg: #0f0f0f;
   --c-fg-muted: #606060;
-  --c-fg-subtle: #8a8a8a;
+  --c-fg-subtle: #686868;
   --c-brand: #ff4d4f;
   --c-brand-hover: #f03a3d;
   --c-brand-soft: rgba(255, 77, 79, 0.1);
@@ -42,7 +55,7 @@
   --c-line: #2a2a2a;
   --c-fg: #f1f1f1;
   --c-fg-muted: #aaaaaa;
-  --c-fg-subtle: #8c8c8c;
+  --c-fg-subtle: #aaaaaa;
   --c-brand: #ff6b6d;
   --c-brand-hover: #ff8587;
   --c-brand-soft: rgba(255, 107, 109, 0.16);

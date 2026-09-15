@@ -92,7 +92,7 @@ export function TopNav() {
 
         {/* 搜索栏：桌面端居中，移动端隐藏（由搜索页承载） */}
         <div ref={inputWrapRef} className="relative mx-auto hidden w-full max-w-[560px] md:block">
-          <form onSubmit={onSearchSubmit} role="search">
+          <form onSubmit={onSearchSubmit} role="search" className="flex items-center gap-2">
             <SearchInput
               value={keyword}
               onChange={(event) => {
@@ -103,7 +103,9 @@ export function TopNav() {
               onClear={() => setKeyword('')}
               placeholder="搜索视频、创作者、动态"
               aria-label="搜索"
+              name="q"
             />
+            <Button type="submit" variant="secondary" aria-label="提交搜索">搜索</Button>
           </form>
           {suggestOpen && (
             <div className="absolute inset-x-0 top-[calc(100%+6px)] z-70 overflow-hidden rounded-card border border-line bg-surface py-2 shadow-pop">
@@ -194,7 +196,7 @@ export function TopNav() {
                         title: '确认退出登录？',
                         description: '退出后需要重新登录才能继续上传与互动。',
                         confirmText: '退出',
-                        onConfirm: () => void logout(),
+                        onConfirm: () => logout(),
                       }),
                   },
                 ]}

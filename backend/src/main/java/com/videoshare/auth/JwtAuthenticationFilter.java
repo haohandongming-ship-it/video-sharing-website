@@ -48,6 +48,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
         String header = request.getHeader("Authorization");
+        if (header == null && "GET".equals(request.getMethod())
+                && request.getRequestURI().matches("/api/v1/videos/\\d+/source") && request.getCookies() != null) {
+            for (var cookie : request.getCookies()) {
+                if ("video_media".equals(cookie.getName())) { header = "Bearer " + cookie.getValue(); break; }
+            }
+        }
         if (header != null && header.startsWith("Bearer ")) {
             try {
                 var claims = jwtService.parse(header.substring(7));
@@ -67,7 +73,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private boolean isRevoked(String jti) {
         long now = System.currentTimeMillis();
-        if (now < redisRetryAfter.get()) return false;
+        if (now < redisRetryAfter.get()) {
+            if (production) throw new IllegalStateException("Token revocation service unavailable");
+            return false;
+        }
         try {
             boolean revoked = Boolean.TRUE.equals(redis.hasKey(DENYLIST_PREFIX + jti));
             redisRetryAfter.set(0L);

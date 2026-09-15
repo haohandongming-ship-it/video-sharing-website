@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion';
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { EASE } from '@/lib/motion';
@@ -71,13 +72,18 @@ export function Toaster() {
 
 /** 全局二次确认（关键操作：删除/注销/封禁，文档 13.1 关键操作二次确认） */
 export function ConfirmDialog() {
+  // 提交中标记绑定到具体的确认请求：换一个弹窗（confirm 是新的对象）时自动回到未提交状态，
+  // 不需要用 effect 同步，也不会出现「上一次请求进行中被关掉，下一个弹窗一直转圈」。
+  const [pendingOwner, setPendingOwner] = useState<unknown>(null);
   const confirm = useUiStore((s) => s.confirm);
   const close = useUiStore((s) => s.closeConfirm);
+  const pending = pendingOwner !== null && pendingOwner === confirm;
 
   return (
     <Modal
       open={confirm.open}
       onClose={() => {
+        if (pending) return;
         confirm.onCancel?.();
         close();
       }}
@@ -89,6 +95,7 @@ export function ConfirmDialog() {
         <>
           <Button
             variant="ghost"
+            disabled={pending}
             onClick={() => {
               confirm.onCancel?.();
               close();
@@ -98,9 +105,12 @@ export function ConfirmDialog() {
           </Button>
           <Button
             variant={confirm.danger ? 'danger' : 'primary'}
+            loading={pending}
             onClick={async () => {
-              await confirm.onConfirm?.();
-              close();
+              setPendingOwner(confirm);
+              try { await confirm.onConfirm?.(); close(); }
+              catch (error) { useUiStore.getState().toast({ title: error instanceof Error ? error.message : '操作失败，请重试', tone: 'error' }); }
+              finally { setPendingOwner(null); }
             }}
           >
             {confirm.confirmText}
@@ -109,7 +119,7 @@ export function ConfirmDialog() {
       }
     >
       <p className="text-sm leading-relaxed text-fg-muted">
-        该操作会立即生效，请确认后继续。若为误操作，部分操作可在 30 天内通过回收站恢复。
+        请确认后继续。
       </p>
     </Modal>
   );

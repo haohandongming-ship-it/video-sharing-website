@@ -17,10 +17,14 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ApiException.class)
     ResponseEntity<ApiResponse<Void>> api(ApiException ex) { return ResponseEntity.status(status(ex.errorCode())).body(ApiResponse.error(ex.errorCode(), ex.getMessage())); }
     @ExceptionHandler({MethodArgumentNotValidException.class, ConstraintViolationException.class,
+            org.springframework.web.method.annotation.HandlerMethodValidationException.class,
             org.springframework.http.converter.HttpMessageNotReadableException.class,
             org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,
             org.springframework.web.bind.MissingServletRequestParameterException.class})
     ResponseEntity<ApiResponse<Void>> validation(Exception ex) { return ResponseEntity.badRequest().body(ApiResponse.error(ErrorCode.VALIDATION, "参数校验失败")); }
+    @ExceptionHandler({org.springframework.web.servlet.resource.NoResourceFoundException.class,
+            org.springframework.web.servlet.NoHandlerFoundException.class})
+    ResponseEntity<ApiResponse<Void>> notFound(Exception ex) { return ResponseEntity.status(404).body(ApiResponse.error(ErrorCode.NOT_FOUND, "资源不存在")); }
     @ExceptionHandler(AccessDeniedException.class)
     ResponseEntity<ApiResponse<Void>> denied() { return ResponseEntity.status(403).body(ApiResponse.error(ErrorCode.FORBIDDEN, "没有权限执行此操作")); }
     @ExceptionHandler({AsyncRequestNotUsableException.class, IOException.class})

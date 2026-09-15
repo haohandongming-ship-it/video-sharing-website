@@ -103,6 +103,8 @@ app:
     access-ttl-seconds: 900
     refresh-ttl-seconds: 604800
     secure-cookie: ${AUTH_SECURE_COOKIE:false}
+    # 反代（nginx/compose）后面 socket 地址是代理地址，置 true 时按 X-Forwarded-For 最右侧一跳识别客户端。
+    trust-proxy-headers: ${AUTH_TRUST_PROXY_HEADERS:false}
     private-key-base64: ${JWT_PRIVATE_KEY_BASE64:}
     public-key-base64: ${JWT_PUBLIC_KEY_BASE64:}
   storage:

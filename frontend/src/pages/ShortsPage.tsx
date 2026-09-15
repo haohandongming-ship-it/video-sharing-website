@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowLeft,
@@ -33,9 +34,22 @@ const LONG_PRESS_MS = 320;
 export default function ShortsPage() {
   const [params, setParams] = useSearchParams();
   const initialId = params.get('v') ? Number(params.get('v')) : null;
+  const [requestedId] = useState(initialId);
+  const requested = useQuery({
+    queryKey: ['videos', 'short-deep-link', requestedId],
+    queryFn: () => videoApi.detail(requestedId!),
+    enabled: requestedId !== null && Number.isSafeInteger(requestedId) && requestedId > 0,
+    retry: false,
+  });
 
   const { data, isLoading, isError, refetch, fetchNextPage, hasNextPage } = useShortsFeed();
-  const videos = useMemo(() => data?.pages.flatMap((page) => page.items) ?? [], [data]);
+  const videos = useMemo(() => {
+    const feed = data?.pages.flatMap((page) => page.items) ?? [];
+    if (!requested.data) return feed;
+    // 深链视频已在推荐流里时保持原有顺序：一旦把它挪到队首，渲染期算出的 index 就会指向别的视频。
+    if (feed.some((video) => video.id === requested.data?.id)) return feed;
+    return [requested.data, ...feed];
+  }, [data, requested.data]);
 
   const [index, setIndex] = useState(0);
   const [muted, setMuted] = useState(true);
@@ -48,6 +62,7 @@ export default function ShortsPage() {
   const [commentsOpen, setCommentsOpen] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [localLikes, setLocalLikes] = useState<Record<number, boolean>>({});
+  const [localFavorites, setLocalFavorites] = useState<Record<number, boolean>>({});
   const setLocalLike = (videoId: number, active: boolean) =>
     setLocalLikes((prev) => ({ ...prev, [videoId]: active }));
 
@@ -59,6 +74,14 @@ export default function ShortsPage() {
 
   const isLogin = useAuthStore((s) => s.status === 'authenticated');
   const toast = useUiStore((s) => s.toast);
+  const client = useQueryClient();
+
+  /* 失效的分享链接（已删除/私密）不能拖垮整页：退回推荐流并说明原因 */
+  useEffect(() => {
+    if (requestedId !== null && requested.isError) {
+      toast({ title: '该短视频暂不可用', description: '已为你展示推荐内容', tone: 'info' });
+    }
+  }, [requested.isError, requestedId, toast]);
 
   const current: VideoSummary | undefined = videos[index];
 
@@ -77,7 +100,7 @@ export default function ShortsPage() {
         return;
       }
       if (next >= videos.length) {
-        if (hasNextPage) void fetchNextPage();
+        if (hasNextPage) { void fetchNextPage(); return; }
         else {
           toast({ title: '已经看完了当前推荐', description: '稍后会有新的内容', tone: 'info' });
           return;
@@ -145,17 +168,18 @@ export default function ShortsPage() {
     return () => window.removeEventListener('keydown', handler);
   }, [goTo, index]);
 
-  /** 点赞：本地即时反馈 + 接口写入（失败静默，下一次拉取会纠正） */
+  /** 点赞：本地即时反馈 + 接口写入；成功后让详情缓存同步，避免回到详情页看到旧状态 */
   const likeVideo = useCallback(
     (videoId: number, active: boolean) => {
       void videoApi
         .like(videoId, active)
         .then(() => {
           setLocalLike(videoId, active);
+          void client.invalidateQueries({ queryKey: ['videos', 'detail', videoId] });
         })
-        .catch(() => undefined);
+        .catch(() => toast({ title: '点赞失败，请重试', tone: 'error' }));
     },
-    [],
+    [client, toast],
   );
 
   /* 滚轮切换（桌面） */
@@ -232,7 +256,9 @@ export default function ShortsPage() {
   );
 
 
-  if (isLoading) {
+  // 深链详情只有在「推荐流还没内容」时才阻塞渲染：分享链接请求慢或挂起时，
+  // 不能让整个短视频页一直转圈，推荐流到了就先播。
+  if (isLoading || (requestedId !== null && requested.isLoading && videos.length === 0)) {
     return (
       <div className="grid h-full place-items-center bg-black">
         <Spinner className="text-white" label="正在加载短视频" />
@@ -242,7 +268,7 @@ export default function ShortsPage() {
 
   if (isError) {
     return (
-      <div className="grid h-full place-items-center bg-black px-6">
+      <div className="grid h-full place-items-center bg-canvas px-6">
         <ErrorState title="短视频加载失败" description="网络似乎不太稳定，请稍后重试。" onRetry={() => void refetch()} />
       </div>
     );
@@ -250,7 +276,7 @@ export default function ShortsPage() {
 
   if (videos.length === 0) {
     return (
-      <div className="grid h-full place-items-center bg-black px-6">
+      <div className="grid h-full place-items-center bg-canvas px-6">
         <EmptyState
           title="还没有短视频"
           description="成为第一个发布短视频的人，或者回到首页看看长视频。"
@@ -293,7 +319,8 @@ export default function ShortsPage() {
           className="absolute inset-0"
         >
           <ShortVideoPlayer
-            src={current?.hlsUrl ?? '/demo/hls/master.m3u8'}
+            src={current?.hlsUrl ?? ''}
+            playbackRate={fastForward ? 2 : 1}
             poster={current?.coverUrl}
             playing={!paused}
             muted={muted}
@@ -347,7 +374,7 @@ export default function ShortsPage() {
           <InteractionButton
             icon={<Heart className={cn('size-7', (localLikes[current.id] ?? current.liked) && 'fill-current text-brand')} />}
             label="点赞"
-            count={current.stats.likes + (localLikes[current.id] ? 1 : 0)}
+            count={current.stats.likes + Number(localLikes[current.id] ?? current.liked ?? false) - Number(current.liked ?? false)}
             active={Boolean(localLikes[current.id] ?? current.liked)}
             onClick={() => {
               if (!isLogin) {
@@ -364,16 +391,23 @@ export default function ShortsPage() {
             onClick={() => setCommentsOpen(true)}
           />
           <InteractionButton
-            icon={<Bookmark className={cn('size-7', current.favorited && 'fill-current text-brand')} />}
+            icon={<Bookmark className={cn('size-7', (localFavorites[current.id] ?? current.favorited) && 'fill-current text-brand')} />}
             label="收藏"
-            count={current.stats.favorites}
-            active={current.favorited}
+            count={current.stats.favorites + Number(localFavorites[current.id] ?? current.favorited ?? false) - Number(current.favorited ?? false)}
+            active={localFavorites[current.id] ?? current.favorited}
             onClick={() => {
               if (!isLogin) {
                 toast({ title: '登录后即可收藏', tone: 'warning' });
                 return;
               }
-              void videoApi.favorite(current.id, !current.favorited).then(() => toast({ title: '已更新收藏', tone: 'success' }));
+              const active = !(localFavorites[current.id] ?? current.favorited);
+              void videoApi.favorite(current.id, active).then(() => {
+                setLocalFavorites((previous) => ({ ...previous, [current.id]: active }));
+                // 收藏夹列表与详情缓存都要失效，否则「我的收藏」在 staleTime 内仍是旧成员关系。
+                void client.invalidateQueries({ queryKey: ['videos', 'favorites'] });
+                void client.invalidateQueries({ queryKey: ['videos', 'detail', current.id] });
+                toast({ title: '已更新收藏', tone: 'success' });
+              }).catch(() => toast({ title: '收藏失败，请重试', tone: 'error' }));
             }}
           />
           <InteractionButton icon={<Share2 className="size-7" />} label="分享" onClick={() => setShareOpen(true)} />

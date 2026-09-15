@@ -15,7 +15,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
   return (
     <div
       className={cn(
-        'flex h-10 items-center gap-2 rounded-btn border bg-surface px-3',
+        // w-full 让输入框默认铺满一行，同时保留调用方用 w-36 / sm:w-72 之类的宽度覆盖能力
+        // （flex-1 与 w-* 不是同一个 tailwind-merge 分组，会互相打架）。
+        'flex h-10 w-full min-w-0 items-center gap-2 rounded-btn border bg-surface px-3',
         'transition-colors duration-150 focus-within:border-accent',
         invalid ? 'border-brand' : 'border-line',
         className,
@@ -55,7 +57,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         ref={ref}
         aria-invalid={invalid || undefined}
         className={cn(
-          'w-full resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed outline-none placeholder:text-fg-subtle',
+          'block w-full min-w-0 resize-none bg-transparent px-3 py-2.5 text-sm leading-relaxed outline-none placeholder:text-fg-subtle',
           className,
         )}
         {...rest}

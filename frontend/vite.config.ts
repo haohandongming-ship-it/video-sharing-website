@@ -43,6 +43,7 @@ export default defineConfig(({ mode }) => {
       },
     },
     test: {
+      env: { VITE_USE_MOCK: 'true' },
       globals: true,
       environment: 'jsdom',
       setupFiles: ['./vitest.setup.ts'],

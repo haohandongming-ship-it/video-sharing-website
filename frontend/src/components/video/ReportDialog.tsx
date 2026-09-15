@@ -30,11 +30,12 @@ export function ReportDialog({ open, onClose, targetType, targetId, targetTitle 
     }
     setPending(true);
     try {
-      const result = await videoApi.report({ targetType, targetId, reason, description: description || undefined });
+      const details = [description.trim(), contact.trim() ? `联系方式：${contact.trim()}` : ''].filter(Boolean).join('\n');
+      const result = await videoApi.report({ targetType, targetId, reason, description: details || undefined });
       setDone(true);
       toast({ title: '举报已提交', description: `受理编号 #${result.reportId}，我们会尽快处理`, tone: 'success' });
-    } catch {
-      /* 全局 mutation 错误提示已覆盖 */
+    } catch (error) {
+      toast({ title: error instanceof Error ? error.message : '举报提交失败，请重试', tone: 'error' });
     } finally {
       setPending(false);
     }
@@ -108,6 +109,7 @@ export function ReportDialog({ open, onClose, targetType, targetId, targetTitle 
               补充说明<span className="ml-1 text-fg-subtle">（选填，最多 500 字）</span>
             </p>
             <Textarea
+              aria-label="举报补充说明"
               rows={4}
               maxLength={500}
               value={description}
@@ -124,6 +126,8 @@ export function ReportDialog({ open, onClose, targetType, targetId, targetTitle 
               联系方式<span className="ml-1 text-fg-subtle">（选填，便于跟进）</span>
             </p>
             <Input
+              aria-label="举报联系方式"
+              maxLength={150}
               value={contact}
               onChange={(event) => setContact(event.target.value)}
               placeholder="邮箱或手机号"

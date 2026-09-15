@@ -236,3 +236,55 @@
 | 后端性能基准 TSV | `backend/target/perf/*.tsv` |
 
 > 局限性说明：本次为单机压测（客户端与服务端同机），绝对吞吐受客户端与环回栈影响，横向对比请以同环境为准；GUI 测试基于 ZCode 内置浏览器（Chromium），真实文件上传路径以 `pnpm verify:upload` 脚本另行验收；Mimosa 静态扫描为密封投影（非运行时验证），所有 findings 已人工复核。
+
+---
+
+## 9. 缺陷修复与复验（2026-09-15 修订轮）
+
+> 本节记录第 7 节缺陷清单的修复结果与复验证据。所有复验都在同一台机器、同一套**真实运行的前后端**上重新执行，证据来自可重跑脚本与自动化用例，不是静态推断。
+
+### 9.1 修复清单与验证方式
+
+| 编号 | 问题 | 修复 | 验证 |
+| --- | --- | --- | --- |
+| BUG-01 | 种子视频源 404 + 播放器错误文案误导 | 打包 `demo/sample.mp4`，新增 `DevMediaRepair`（仅 dev + local 存储）把示例视频指向真实文件；`useHlsPlayer` 按 `MediaError.code` 分类提示，重试不再把「源不存在」误报成「自动播放被拦截」 | `ReportRegressionTest.seedSourceIsRealAndRangeContainsOnlyRequestedBytes` 字节级比对；E2E 完整下载 / 区间 / 后缀区间 / 越界 4 项；浏览器 `/video/1` 无控制台错误 |
+| BUG-02 | 互动计数被「真实记录数」重算覆盖 | 计数统一改为行级派生：写路径先锁行、再重算、再 `refresh` 实体；种子不再写虚假基数；`V7` 迁移把历史库的点赞/收藏/评论/转发计数一次性对齐真实行 | `ReportRegressionTest.concurrentIdenticalReactionsStayIdempotent`（24 并发 → 单条记录）；E2E 点赞/收藏/评论/动态点赞/转发 6 项往返断言；旧库迁移实测 83→0、31→0、7→1 |
+| BUG-03 | 删除回复后前端列表未同步 | 删除 mutation 同时失效 `['comments']` 前缀与视频详情缓存 | E2E 删除回复后列表与 `replyCount` 同步；`reportRegression.test.tsx` 断言查询失效 |
+| BUG-04 | 举报补充说明疑似丢失 + 输入框溢出 | 说明与联系方式合并提交（后端 `description` 完整落库）；输入框改 `min-w-0` / `block w-full` | E2E 举报说明在后台完整回读；浏览器 30 条路由零横向溢出 |
+| BUG-05 | 登出后前端仍显示登录态 | 登出同步清空 store、查询缓存与通知状态，`sessionGeneration` 阻止在途刷新复活会话 | 前端 3 条单测（在途刷新、登出中刷新、通知清空）；E2E 断言 Cookie 清除 + 旧令牌 401 |
+| SEC-01 | JsonLd script 逃逸面 | `JSON.stringify(...).replace(/</g,'\\u003c')` | 单测断言 payload 以纯文本呈现且 JSON 可回读 |
+| SEC-02 | 密码登录无限速 | 新增 `LoginThrottle`：按「认证标识 + 客户端地址」双预算，重置密码同样纳入；成功一次即清零 | `ReportRegressionTest` 4 项 + E2E 3 项（密码 / 短信 / 重置 / 跨账号隔离） |
+| SEC-03 | 缺 CSP/HSTS | 前端 nginx 全站 CSP；后端对 `/api/**`、`/actuator/**` 下发严格 CSP（开发文档页不受影响）；HSTS 仅安全连接 | E2E 头部断言 + `ReportRegressionTest.securityHeadersAreScopedAndSuffixRangesWork`（含 `secure(true)` 用例） |
+| SEC-04 | 500 语义误用 | 全局异常映射补 `HandlerMethodValidationException→400`、`NoResourceFoundException/NoHandlerFoundException→404` | E2E 3 项 + 后端单测 |
+| INFRA-01 | 单测受 `.env` 影响 | vitest 固定 `VITE_USE_MOCK=true` | 存在 `.env` 的目录下 `pnpm verify` 154/154 通过 |
+| 4.1–4.5（前端报告） | 无障碍名称缺失、空头像破图、无 `<form>`、移动端点击目标偏小、次级文字对比度不足 | ActionBar 补 `aria-label`；ChannelCard 改用 `Avatar`；登录/注册/忘记密码改为真实表单并补 `name/required/autocomplete`；搜索补提交按钮；移动端用伪元素扩大热区（不改行高、不破坏截断省略号）；`fg-subtle` 提升到 AA 对比度 | 浏览器 30/30 用例通过；单测覆盖表单语义提交 |
+
+### 9.2 复验结论（本轮实测）
+
+| 验证 | 命令 | 结果 |
+| --- | --- | --- |
+| 后端 | `mvn test` | **29/29 通过**（新增 `ReportRegressionTest` 11 项） |
+| 前端 | `pnpm verify` | typecheck / lint / **154 个单测** / build 全绿 |
+| 端到端 | `node scripts/report-regression-e2e.mjs http://127.0.0.1:5173` | **63/63 通过**（含真实分片上传 → 合并 → 转码 → 审核 → 播放 → 续播闭环） |
+| 真实浏览器 | `node frontend/scripts/cdp-check.mjs`（Chromium/Edge 无头 + CDP） | **30/30 通过**，无控制台错误、无横向溢出 |
+| 旧库迁移 | 用 9 月 13 日的 dev H2 库启动新版本 | V5→V7 迁移成功，计数与真实行对齐，历史播放量保留 |
+
+环境：Windows 11 · JDK 25.0.2（release 21 目标）· Node 22.20 · H2 文件库 · 本地对象存储。
+复验脚本：`scripts/report-regression-e2e.mjs`（可重复执行，退出码即结论）。
+
+### 9.3 本轮同时修复的加固项（原报告清单之外）
+
+- **登录限流可能锁死整个部署**：原先按 `getRemoteAddr()` 计数，反代（nginx/compose）后面所有用户共用一个地址，攻击者制造的失败会把全站登录锁 15 分钟。现以「认证标识」为主预算，客户端地址仅在可信时（公网直连，或显式 `AUTH_TRUST_PROXY_HEADERS=true` 且代理追加 `X-Forwarded-For`）参与计数，成功一次即清零。
+- 短信登录与重置密码的失败预算此前可用 `account` 字段轮换绕过，现按手机号计数。
+- 转发动态被删除时原动态 `repost_count` 不同步回落，现同步递减。
+- 源文件响应用存储层实际可读字节数声明 `Content-Length`；支持后缀区间 `bytes=-N`，多区间按 RFC 9110 忽略而非 416。
+- `duration` 缺失（尚未转码完成）的上传视频不再把续播进度压成 0。
+- 短视频深链：详情晚于推荐流返回时不再重排列表（避免定位到别的视频）；失效分享链接退回推荐流并提示，不再整页报错。
+- 短视频页点赞/收藏补缓存失效；无源文件时给出文案而不是黑屏；Mock 层登出清理互动状态（与 BUG-05 同类）。
+
+### 9.4 仍未覆盖的范围（诚实声明）
+
+- MySQL / Redis / MinIO 生产链路与 `docker compose` 未在本机执行；本轮只验证了 H2 + 本地存储。
+- 生产 HTTPS 入口下的 Secure Cookie 与 HSTS 未实测（本机为明文 HTTP，HSTS 仅在 `secure` 请求上发送，已由测试用例覆盖）。
+- 长时间多机并发压测未重跑；计数正确性由行锁设计 + 24 并发回归用例保证。
+

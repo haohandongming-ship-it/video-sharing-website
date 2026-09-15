@@ -1,6 +1,7 @@
 import { QueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/api/client';
 import { useUiStore } from '@/stores/uiStore';
+import { authBridge } from '@/api/authBridge';
 
 /** 不重试的业务错误：参数错误、鉴权失败、权限不足、资源不存在 */
 function shouldRetry(failureCount: number, error: unknown): boolean {
@@ -31,3 +32,4 @@ export const queryClient = new QueryClient({
     },
   },
 });
+authBridge.onClear(() => queryClient.clear());

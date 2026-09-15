@@ -34,6 +34,20 @@ public class SecurityConfig {
         return http
                 .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
+                .headers(headers -> headers
+                        /*
+                         * 严格 CSP 只作用于接口与探针响应；/swagger-ui、/v3/api-docs 是 HTML + 内联脚本，
+                         * 套用 default-src 'none' 会把开发文档打成白屏。页面 CSP 由前端 nginx 下发。
+                         */
+                        .addHeaderWriter((request, response) -> {
+                            String path = request.getRequestURI();
+                            if (path.startsWith("/api/") || path.startsWith("/actuator/")) {
+                                response.setHeader("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+                            } else {
+                                response.setHeader("Content-Security-Policy", "frame-ancestors 'none'; base-uri 'self'");
+                            }
+                        })
+                        .httpStrictTransportSecurity(hsts -> hsts.includeSubDomains(true).maxAgeInSeconds(31536000)))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .exceptionHandling(handling -> handling.authenticationEntryPoint(
                         (request, response, ex) -> errors.write(response, 401, ErrorCode.UNAUTHORIZED, "请先登录")))

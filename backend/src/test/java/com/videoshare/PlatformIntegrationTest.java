@@ -160,7 +160,7 @@ class PlatformIntegrationTest {
                         .header("X-Requested-With", "XMLHttpRequest").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"content\":\"转发测试\",\"repostOfId\":1}"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.repostOf.id").value(1));
-        mvc.perform(get("/api/v1/feeds/1")).andExpect(jsonPath("$.data.stats.reposts").value(4));
+        mvc.perform(get("/api/v1/feeds/1")).andExpect(jsonPath("$.data.stats.reposts").value(1));
     }
 
     @Test

@@ -150,15 +150,21 @@ public class SocialService {
 
     @Transactional
     public void remove(long userId, long id, boolean admin) {
-        Map<String, Object> row = jdbc.queryForMap("SELECT user_id FROM feeds WHERE id=?", id);
+        Map<String, Object> row = jdbc.queryForMap("SELECT user_id,status,repost_of_id FROM feeds WHERE id=?", id);
         if (((Number) row.get("user_id")).longValue() != userId && !admin) {
             throw new ApiException(ErrorCode.FORBIDDEN, "不能删除他人的动态");
         }
         jdbc.update("UPDATE feeds SET status='DELETED' WHERE id=?", id);
+        // 删除转发时原动态的转发数要同步回落，否则 repost_count 只增不减、与真实转发记录永久漂移。
+        if ("VISIBLE".equals(row.get("status")) && row.get("repost_of_id") instanceof Number original) {
+            jdbc.update("UPDATE feeds SET repost_count=CASE WHEN repost_count>0 THEN repost_count-1 ELSE 0 END WHERE id=?",
+                    original.longValue());
+        }
     }
 
     @Transactional
     public Map<String, Object> like(long userId, long id, boolean active) {
+        jdbc.queryForList("SELECT id FROM feeds WHERE id=? FOR UPDATE",id);
         feed(id, userId);
         boolean exists = views.liked(userId, "FEED", id, "LIKE");
         if (active && !exists) {

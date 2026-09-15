@@ -251,7 +251,7 @@ export default function SettingsPage() {
     const next: Record<string, string> = {};
     if (oldPassword.length < 6) next.oldPassword = '请输入原密码';
     if (nextPwd.length < 8) next.nextPwd = '新密码至少 8 位';
-    if (nextPwd === oldPassword) next.nextPwd = '新密码不能与原密码相同';
+    else if (nextPwd === oldPassword) next.nextPwd = '新密码不能与原密码相同';
     if (confirmPassword !== nextPwd) next.confirmPassword = '两次输入的新密码不一致';
     setPasswordErrors(next);
     if (Object.keys(next).length > 0) return;
@@ -821,7 +821,7 @@ export default function SettingsPage() {
                 level={2}
                 title="账号注销"
                 subtitle="注销后进入 7 天冷静期，期间可撤销；冷静期结束后账号信息将被匿名化处理，已发布内容不再展示作者信息。"
-                action={<Badge tone="danger">不可恢复</Badge>}
+                action={<Badge tone="warning">7 天冷静期</Badge>}
               />
               {deactivateScheduledAt ? (
                 <div className="flex flex-col gap-2 rounded-btn border border-line bg-surface-2 px-3.5 py-3">

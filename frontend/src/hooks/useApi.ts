@@ -367,8 +367,11 @@ export function useDeleteComment(videoId: number) {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (commentId: number) => videoApi.deleteComment(commentId),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: ['comments', videoId] });
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.comments.all }),
+        client.invalidateQueries({ queryKey: queryKeys.videos.detail(videoId) }),
+      ]);
       useUiStore.getState().toast({ title: '评论已删除', tone: 'success' });
     },
   });

@@ -76,6 +76,9 @@ services:
     restart: unless-stopped
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      # 只有 nginx 作为入口，登录限流必须信任代理追加的 X-Forwarded-For，否则所有用户共用一个 IP 预算。
+      AUTH_TRUST_PROXY_HEADERS: ${AUTH_TRUST_PROXY_HEADERS:-true}
+      AUTH_SECURE_COOKIE: ${AUTH_SECURE_COOKIE:-false}
       MYSQL_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-video_platform}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
       MYSQL_USER: ${MYSQL_USER:-video}
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}

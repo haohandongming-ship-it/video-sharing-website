@@ -42,7 +42,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 @RequestMapping("/api/v1/videos")
 public class VideoController {
 
-    private static final Pattern RANGE = Pattern.compile("bytes=(\\d+)-(\\d*)");
+    private static final Pattern RANGE = Pattern.compile("bytes=(\\d*)-(\\d*)");
 
     private final VideoService service;
     private final FileAssetRepository files;
@@ -69,6 +69,8 @@ public class VideoController {
                                                         @AuthenticationPrincipal CurrentUser current,
                                                         @RequestHeader(value = "Range", required = false) String range) {
         Video video = service.playable(id, current);
+        if (download && current == null) throw new ApiException(ErrorCode.UNAUTHORIZED, "请先登录");
+        if (download && !video.isDownloadEnabled()) throw new ApiException(ErrorCode.FORBIDDEN, "作者未开放下载");
         FileAsset file = files.findById(video.getSourceFileId())
                 .orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "视频文件不存在"));
         long total = file.getFileSize();
@@ -128,18 +130,32 @@ public class VideoController {
 
     private ResponseEntity<StreamingResponseBody> stream(FileAsset file, Video video, long start, long end, long total,
                                                          boolean partial, boolean download) {
-        long length = end - start + 1;
-        StorageGateway.StoredObject object = storage.open(file.getBucket(), file.getObjectKey(), start, length);
+        long requested = end - start + 1;
+        StorageGateway.StoredObject object = storage.open(file.getBucket(), file.getObjectKey(), start, requested);
+        // 数据库里的 file_size 可能与对象实际长度不一致：声明多少就发多少，二者都取存储层给出的可用字节数。
+        long available = object.length();
+        if (available <= 0) {
+            return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE)
+                    .header(HttpHeaders.CONTENT_RANGE, "bytes */" + total).build();
+        }
+        long responseEnd = start + available - 1;
         StreamingResponseBody body = output -> {
             try (InputStream input = object.stream()) {
-                input.transferTo(output);
+                byte[] buffer = new byte[64 * 1024];
+                long remaining = available;
+                while (remaining > 0) {
+                    int read = input.read(buffer, 0, (int)Math.min(buffer.length, remaining));
+                    if (read < 0) break;
+                    output.write(buffer, 0, read);
+                    remaining -= read;
+                }
             }
         };
         HttpHeaders headers = new HttpHeaders();
         headers.set(HttpHeaders.ACCEPT_RANGES, "bytes");
-        headers.setContentLength(length);
+        headers.setContentLength(available);
         headers.setContentType(MediaType.parseMediaType(file.getMimeType()));
-        if (partial) headers.set(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + end + "/" + total);
+        if (partial) headers.set(HttpHeaders.CONTENT_RANGE, "bytes " + start + "-" + responseEnd + "/" + total);
         if (download) {
             headers.setContentDisposition(ContentDisposition.attachment()
                     .filename(video.getTitle() + ".mp4", StandardCharsets.UTF_8).build());
@@ -158,23 +174,27 @@ public class VideoController {
         static RangeSpec parse(String header, long total) {
             if (header == null || header.isBlank()) return new Full(total);
             Matcher matcher = RANGE.matcher(header.trim());
-            if (!matcher.matches()) return new Unsatisfiable(total);
+            // 多区间、非 bytes 单位或语法不符：按 RFC 9110 忽略 Range 头返回完整内容，而不是 416。
+            if (!matcher.matches()) return new Full(total);
             long start;
+            long end;
             try {
-                start = Long.parseLong(matcher.group(1));
+                String rawStart = matcher.group(1);
+                String rawEnd = matcher.group(2);
+                if (rawStart.isBlank()) {
+                    // 后缀区间 bytes=-N：请求最后 N 字节（部分播放器用它读取文件尾部的 moov）。
+                    long suffix = Long.parseLong(rawEnd);
+                    if (suffix <= 0 || total <= 0) return new Unsatisfiable(total);
+                    start = Math.max(0, total - suffix);
+                    end = total - 1;
+                } else {
+                    start = Long.parseLong(rawStart);
+                    end = rawEnd == null || rawEnd.isBlank() ? total - 1 : Math.min(Long.parseLong(rawEnd), total - 1);
+                }
             } catch (NumberFormatException ex) {
                 return new Unsatisfiable(total);
             }
-            String rawEnd = matcher.group(2);
-            long end = total - 1;
-            if (rawEnd != null && !rawEnd.isBlank()) {
-                try {
-                    end = Math.min(Long.parseLong(rawEnd), total - 1);
-                } catch (NumberFormatException ex) {
-                    return new Unsatisfiable(total);
-                }
-            }
-            if (start > end || start >= total) return new Unsatisfiable(total);
+            if (total <= 0 || start > end || start >= total) return new Unsatisfiable(total);
             return new Partial(start, end, total);
         }
     }

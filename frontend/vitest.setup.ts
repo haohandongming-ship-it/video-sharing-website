@@ -31,6 +31,18 @@ vi.stubGlobal('IntersectionObserver', MockObserver);
 vi.stubGlobal('ResizeObserver', MockObserver);
 
 /**
+ * jsdom 不实现媒体播放（HTMLMediaElement.play/pause/load 会直接抛错），
+ * 短视频页等组件在挂载时就会调用它们，这里用返回已解决 Promise 的桩替代。
+ */
+Object.defineProperty(window.HTMLMediaElement.prototype, 'play', {
+  writable: true,
+  // 不使用 vi.fn()：测试里的 vi.restoreAllMocks() 会把它的实现清空，导致 play() 返回 undefined。
+  value: () => Promise.resolve(),
+});
+Object.defineProperty(window.HTMLMediaElement.prototype, 'pause', { writable: true, value: () => undefined });
+Object.defineProperty(window.HTMLMediaElement.prototype, 'load', { writable: true, value: () => undefined });
+
+/**
  * 部分 jsdom 版本不向全局暴露 localStorage（仅挂在 window 上），
  * 而应用代码通过 globalThis 访问。这里补齐一个符合 Storage 契约的实现，
  * 保证「偏好持久化」相关逻辑可在测试中被真实验证。

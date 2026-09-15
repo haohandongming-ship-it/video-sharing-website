@@ -346,7 +346,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
             />
 
             {mode === 'login' && (
-              <div className="mt-5 flex flex-col gap-4">
+              <form noValidate onSubmit={(event) => { event.preventDefault(); if (!pending) void submitLogin(); }} className="mt-5 flex flex-col gap-4">
                 <Tabs items={METHOD_TABS} value={method} onChange={setMethod} variant="underline" />
 
                 {method === 'sms' ? (
@@ -395,6 +395,8 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                       '账号',
                       <Input
                         autoComplete="username"
+                        name="username"
+                        required
                         placeholder="用户名或邮箱"
                         aria-label="账号"
                         icon={<UserRound className="size-4" aria-hidden />}
@@ -409,6 +411,8 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                       <Input
                         type={showPassword ? 'text' : 'password'}
                         autoComplete="current-password"
+                        name="password"
+                        required
                         placeholder="请输入密码"
                         aria-label="密码"
                         icon={<Lock className="size-4" aria-hidden />}
@@ -444,7 +448,7 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                   loading={pending}
                   loadingText="登录中…"
                   aria-label={method === 'sms' ? '验证码登录' : '账号密码登录'}
-                  onClick={() => void submitLogin()}
+                  type="submit"
                 >
                   {method === 'sms' ? '验证码登录' : '登录'}
                 </Button>
@@ -462,11 +466,11 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                 <p className="text-[11px] leading-relaxed text-fg-subtle">
                   第三方登录由服务端携带 state 参数发起授权并在回调时校验，用于防止 CSRF；演示环境不跳转外部站点。
                 </p>
-              </div>
+              </form>
             )}
 
             {mode === 'register' && (
-              <div className="mt-5 flex flex-col gap-3">
+              <form noValidate onSubmit={(event) => { event.preventDefault(); if (!pending) void submitRegister(); }} className="mt-5 flex flex-col gap-3">
                 {field(
                   '用户名（登录用，至少 3 个字符）',
                   <Input
@@ -575,16 +579,16 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                   loading={pending}
                   loadingText="注册中…"
                   aria-label="注册并登录"
-                  onClick={() => void submitRegister()}
+                  type="submit"
                 >
                   注册并登录
                 </Button>
                 {storeError && <p className="text-xs text-brand">{storeError}</p>}
-              </div>
+              </form>
             )}
 
             {mode === 'forgot' && (
-              <div className="mt-5 flex flex-col gap-3">
+              <form noValidate onSubmit={(event) => { event.preventDefault(); if (!pending) void submitForgot(); }} className="mt-5 flex flex-col gap-3">
                 <p className="text-xs leading-relaxed text-fg-muted">
                   通过注册手机号重置密码。为保护账号安全，重置后需要重新登录所有设备。
                 </p>
@@ -647,13 +651,13 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
                   />,
                   errors.fConfirm,
                 )}
-                <Button variant="primary" size="lg" fullWidth aria-label="重置密码" onClick={() => void submitForgot()}>
+                <Button type="submit" variant="primary" size="lg" fullWidth aria-label="重置密码">
                   重置密码
                 </Button>
                 <Button variant="ghost" size="sm" fullWidth aria-label="返回登录" onClick={() => setMode('login')}>
                   返回登录
                 </Button>
-              </div>
+              </form>
             )}
 
             <div className="mt-5 border-t border-line pt-4">

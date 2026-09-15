@@ -977,6 +977,13 @@ export const session = {
     this.userId = null;
     this.accessToken = null;
     writeStoredSession(null);
+    // 互动状态属于上一个会话：不清空的话，换账号登录会看到别人的收藏与观看历史（BUG-05 同类）。
+    engagement.liked.clear();
+    engagement.disliked.clear();
+    engagement.favorited.clear();
+    engagement.subscribed.clear();
+    engagement.followed.clear();
+    engagement.history.clear();
   },
 };
 

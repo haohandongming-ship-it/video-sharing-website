@@ -4,6 +4,8 @@ import { cn } from '@/lib/cn';
 import { formatCount } from '@/lib/format';
 import type { VideoDetail } from '@/api/types';
 import { SubscribeButton } from '@/components/user/SubscribeButton';
+import { Avatar } from '@/components/ui/Avatar';
+import { useAuthStore } from '@/stores/authStore';
 
 export interface ActionBarProps {
   video: VideoDetail;
@@ -31,12 +33,14 @@ export function ActionBar({
   onCoin,
   className,
 }: ActionBarProps) {
+  const own = useAuthStore((state) => state.user?.id === video.author.id);
   return (
     <div className={cn('flex flex-wrap items-center gap-2', className)}>
       <div className="flex items-center rounded-pill bg-surface-2">
         <button
           type="button"
           aria-pressed={video.liked}
+          aria-label="点赞"
           onClick={() => onLike(!video.liked)}
           className={cn(
             'inline-flex h-9 items-center gap-1.5 rounded-l-pill pr-3 pl-3.5 text-[13px] font-medium transition-colors',
@@ -70,6 +74,7 @@ export function ActionBar({
       <button
         type="button"
         aria-pressed={video.favorited}
+        aria-label="收藏"
         onClick={() => onFavorite(!video.favorited)}
         className={cn(
           'inline-flex h-9 items-center gap-1.5 rounded-pill bg-surface-2 px-3.5 text-[13px] font-medium transition-colors',
@@ -122,7 +127,7 @@ export function ActionBar({
       </button>
 
       <div className="ml-auto">
-        <SubscribeButton active={video.subscribed} onToggle={onSubscribe} size="md" />
+        {!own && <SubscribeButton active={video.subscribed} onToggle={onSubscribe} size="md" />}
       </div>
     </div>
   );
@@ -137,15 +142,11 @@ export interface ChannelCardProps {
 
 /** 频道信息卡：头像 / 昵称 / 粉丝数 / 关注按钮（文档 5.3 ChannelCard） */
 export function ChannelCard({ author, subscribed, onSubscribe, className }: ChannelCardProps) {
+  const own = useAuthStore((state) => state.user?.id === author.id);
   return (
     <div className={cn('flex items-center gap-3', className)}>
       <Link to={`/user/${author.id}`} className="shrink-0">
-        <img
-          src={author.avatar ?? undefined}
-          alt={author.nickname}
-          className="size-11 rounded-full bg-surface-3 object-cover"
-          loading="lazy"
-        />
+        <Avatar src={author.avatar} name={author.nickname} size="lg" />
       </Link>
       <div className="min-w-0 flex-1">
         <Link to={`/user/${author.id}`} className="flex items-center gap-1">
@@ -153,7 +154,7 @@ export function ChannelCard({ author, subscribed, onSubscribe, className }: Chan
         </Link>
         <p className="text-xs text-fg-muted">{formatCount(author.followerCount ?? 0)} 位粉丝</p>
       </div>
-      <SubscribeButton active={subscribed} onToggle={onSubscribe} size="sm" />
+      {!own && <SubscribeButton active={subscribed} onToggle={onSubscribe} size="sm" />}
     </div>
   );
 }

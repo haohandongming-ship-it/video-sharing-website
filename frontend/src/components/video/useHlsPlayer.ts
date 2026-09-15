@@ -91,7 +91,7 @@ export function useHlsPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const source = src || DEMO_HLS_URL;
+    const source = src || (USE_MOCK ? DEMO_HLS_URL : '');
     let cancelled = false;
 
     destroy();
@@ -108,6 +108,7 @@ export function useHlsPlayer({
 
     /** 按需加载 hls.js：首屏不下载媒体库（约 590KB），进入播放页才加载 */
     const setup = async () => {
+      if (!source) { setError('视频尚未提供可播放的源文件'); return; }
       // 上传后的源文件通过 /source 提供，URL 没有扩展名；这类地址必须交给浏览器原生媒体管线，不能交给 hls.js。
       if (/\.(mp4|webm|mov|m4v)(?:[?#]|$)/i.test(source) || /\/api\/v1\/videos\/\d+\/source(?:[?#]|$)/i.test(source)) {
         attachNative();
@@ -200,6 +201,7 @@ export function useHlsPlayer({
       callbacksRef.current.onTimeUpdate?.(video.currentTime, video.duration || 0);
     };
     const handlePlay = () => {
+      setError(null);
       setPlaying(true);
       setEnded(false);
     };
@@ -212,7 +214,9 @@ export function useHlsPlayer({
       callbacksRef.current.onEnded?.();
     };
     const handleError = () => {
-      const message = '视频加载失败，请稍后重试';
+      const message = video.error?.code === 2 ? '视频网络请求失败，请检查连接后重试'
+        : video.error?.code === 3 ? '视频解码失败，文件可能损坏或编码不受支持'
+        : '视频源不可用或格式不受支持，请联系作者';
       setWaiting(false);
       setError(message);
       callbacksRef.current.onError?.(message);
@@ -243,9 +247,13 @@ export function useHlsPlayer({
 
   const play = useCallback(async () => {
     try {
+      if (videoRef.current?.error) videoRef.current.load();
       await videoRef.current?.play();
-    } catch {
-      setError('浏览器阻止了自动播放，点击播放按钮继续');
+      setError(null);
+    } catch (error) {
+      setError(error instanceof DOMException && error.name === 'NotAllowedError'
+        ? '浏览器阻止了自动播放，点击播放按钮继续'
+        : '视频源不可用或格式不受支持，请联系作者');
     }
   }, []);
 

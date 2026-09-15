@@ -193,7 +193,7 @@ export default function VideoPlayerPage() {
         <button
           type="button"
           onClick={() => navigate(-1)}
-          className="mb-3 inline-flex items-center gap-1 text-[13px] text-fg-muted hover:text-fg lg:hidden"
+          className="mb-3 inline-flex min-h-11 min-w-11 items-center gap-1 px-2 text-[13px] text-fg-muted hover:text-fg lg:hidden"
         >
           <ArrowLeft className="size-4" />
           返回

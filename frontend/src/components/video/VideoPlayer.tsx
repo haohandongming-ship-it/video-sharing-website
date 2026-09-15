@@ -437,7 +437,7 @@ export function VideoPlayer({
             <Dropdown
               align="end"
               items={[
-                { key: 'auto', label: `自动（当前 ${qualityLabel}）`, onSelect: () => player.setLevel(-1) },
+                { key: 'auto', label: levels.length ? `自动（当前 ${qualityLabel}）` : '原始文件', onSelect: () => player.setLevel(-1) },
                 ...levels.map((level) => ({
                   key: String(level.index),
                   label: level.name,
@@ -532,6 +532,7 @@ export function ShortVideoPlayer({
   className,
   muted,
   onToggleMute,
+  playbackRate = 1,
 }: {
   src?: string | null;
   poster?: string;
@@ -540,6 +541,7 @@ export function ShortVideoPlayer({
   className?: string;
   muted: boolean;
   onToggleMute: () => void;
+  playbackRate?: number;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<HlsType | null>(null);
@@ -547,7 +549,7 @@ export function ShortVideoPlayer({
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const source = src || '/demo/hls/master.m3u8';
+    const source = src || '';
     // 上传的视频由后端直接提供 MP4 源文件。短视频之前一律交给 hls.js，
     // 导致真实上传文件无法播放（hls.js 只支持 HLS 清单）。
     const nativeSource = /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(source)
@@ -555,6 +557,7 @@ export function ShortVideoPlayer({
     let cancelled = false;
 
     const setup = async () => {
+      if (!source) return;
       if (nativeSource) {
         video.src = source;
         return;
@@ -586,6 +589,10 @@ export function ShortVideoPlayer({
   }, [muted]);
 
   useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     if (playing) void video.play().catch(() => undefined);
@@ -593,15 +600,23 @@ export function ShortVideoPlayer({
   }, [playing]);
 
   return (
-    <video
-      ref={videoRef}
-      poster={poster}
-      playsInline
-      loop
-      preload="metadata"
-      onClick={onToggleMute}
-      onEnded={onEnded}
-      className={cn('size-full bg-black object-contain', className)}
-    />
+    <>
+      <video
+        ref={videoRef}
+        poster={poster}
+        playsInline
+        loop
+        preload="metadata"
+        onClick={onToggleMute}
+        onEnded={onEnded}
+        className={cn('size-full bg-black object-contain', className)}
+      />
+      {/* 没有源文件时不能只留一块黑屏：长视频页有对应文案，短视频页补上同款提示。 */}
+      {!src && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center text-sm text-white/80">
+          视频尚未提供可播放的源文件
+        </div>
+      )}
+    </>
   );
 }

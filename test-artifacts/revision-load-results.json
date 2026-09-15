@@ -1,0 +1,45 @@
+{
+  "date": "2026-09-15T06:00:15.572Z",
+  "base": "http://127.0.0.1:8080",
+  "routes": [
+    "/api/v1/videos/recommend",
+    "/api/v1/videos/ranking?type=hot&period=daily",
+    "/api/v1/feeds"
+  ],
+  "environment": "Single Windows host; dev H2; finite mixed-read regression, not a capacity or soak certification",
+  "results": [
+    {
+      "concurrency": 10,
+      "requests": 600,
+      "succeeded": 600,
+      "errors": {},
+      "elapsedMs": 663,
+      "rps": 905.14,
+      "p50Ms": 8.09,
+      "p95Ms": 13.12,
+      "p99Ms": 160.84
+    },
+    {
+      "concurrency": 50,
+      "requests": 600,
+      "succeeded": 600,
+      "errors": {},
+      "elapsedMs": 361,
+      "rps": 1661.13,
+      "p50Ms": 29.76,
+      "p95Ms": 40.67,
+      "p99Ms": 51.31
+    },
+    {
+      "concurrency": 100,
+      "requests": 600,
+      "succeeded": 600,
+      "errors": {},
+      "elapsedMs": 355,
+      "rps": 1690.56,
+      "p50Ms": 59.92,
+      "p95Ms": 79.93,
+      "p99Ms": 85.87
+    }
+  ]
+}

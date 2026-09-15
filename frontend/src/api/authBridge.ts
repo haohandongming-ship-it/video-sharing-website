@@ -21,6 +21,7 @@ type ExpireHandler = (reason: 'expired' | 'revoked') => void;
 
 let refreshHandler: RefreshHandler | null = null;
 let expireHandler: ExpireHandler | null = null;
+const clearHandlers = new Set<() => void>();
 
 export const authBridge = {
   getToken(): string | null {
@@ -41,7 +42,9 @@ export const authBridge = {
     state.accessToken = null;
     state.user = null;
     state.permissions = [];
+    clearHandlers.forEach((handler) => handler());
   },
+  onClear(handler: () => void): void { clearHandlers.add(handler); },
   onRefresh(handler: RefreshHandler): void {
     refreshHandler = handler;
   },

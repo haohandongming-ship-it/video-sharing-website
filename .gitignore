@@ -1,6 +1,7 @@
 .env
 .idea/
 .vscode/
+/data/
 backend/target/
 backend/data/
 frontend/node_modules/
