@@ -70,6 +70,39 @@ powershell -File scripts/start-backend.ps1            # 等价于 -Profile dev-i
 | 旧图清理 | 保存新头像后删除上一张，且仅删除本存储管理的对象（不会误删外链） |
 | 遗留数据 | `node scripts/migrate-base64-avatars.mjs` 把历史上以 base64 存储的头像迁到对象存储 |
 
+## 多码率清晰度（转码）
+
+播放器的清晰度菜单依赖服务端提供多档 HLS。项目本身没有内置编码器，因此分两种情况：
+
+| 来源 | 清晰度来源 |
+| --- | --- |
+| 随包演示视频 | 已内置 360p/540p/720p 演示流，`DemoSegmentController` 直接输出 |
+| 真实上传视频 | 需要用 ffmpeg 离线转码（见下），否则菜单只显示「原画」 |
+
+转码（用 Docker 里的 ffmpeg，无需在宿主机安装）：
+
+```powershell
+powershell -File scripts/transcode-hls.ps1                  # 转所有已发布视频
+powershell -File scripts/transcode-hls.ps1 -VideoIds "5,7"  # 只转指定视频
+powershell -File scripts/transcode-hls.ps1 -Force           # 强制重转
+```
+
+脚本通过后端 `/source` 取源文件，产出到 `data/hls/<videoId>/`（三档 360p/540p/720p，
+不超过源分辨率，关键帧对齐以便切换）。产物由 `TranscodeHlsController` 以
+`/api/v1/videos/<id>/hls/master.m3u8` 提供；后端启动时 `TranscodedHlsLinker`（仅 dev/dev-infra）
+会把存在产物的视频的 `hls_url` 自动指向该清单，因此**转码完重启后端即可生效**，无需手工改库。
+
+```powershell
+docker build -t videoshare-ffmpeg:local - <<'EOF'   # 脚本会自动构建，此处仅示意
+FROM docker.m.daocloud.io/library/debian:bookworm-slim
+RUN apt-get update -qq && apt-get install -y -qq ffmpeg
+ENTRYPOINT ["ffmpeg"]
+EOF
+```
+
+> 注意：`data/hls` 相对 `backend/` 的上一级解析（启动脚本会 `Push-Location backend`），
+> 可用 `HLS_ROOT` 覆盖。转码是派生产物，已在 `.gitignore` 中忽略。
+
 ## 局域网访问
 
 前端开发服务器已监听局域网地址。先在运行项目的电脑上执行 `ipconfig`，找到当前 Wi-Fi/以太网网卡的 IPv4 地址，然后让同一局域网内的设备访问：

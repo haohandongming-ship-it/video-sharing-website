@@ -122,5 +122,6 @@ app:
     public-base-url: ${STORAGE_PUBLIC_BASE_URL:}
     signing-secret: ${STORAGE_SIGNING_SECRET:}
   # 多码率 HLS 转码产物目录（scripts/transcode-hls.ps1 的输出），由 TranscodeHlsController 提供。
+  # 默认相对 backend/ 的上一级：启动脚本用 Push-Location 切到 backend 目录，故 ../data/hls 即仓库根的 data/hls。
   hls:
-    root: ${HLS_ROOT:./data/hls}
+    root: ${HLS_ROOT:../data/hls}

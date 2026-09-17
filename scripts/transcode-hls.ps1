@@ -12,7 +12,8 @@
 # 产物：data/hls/<videoId>/master.m3u8 及分片，由 TranscodeHlsController 对外提供。
 
 param(
-    [int[]]$VideoIds = @(),
+    # 逗号分隔的视频 id；用字符串接收，因为 powershell -File 不会把 "5,6,7" 拆成数组
+    [string]$VideoIds = "",
     [switch]$Force,
     [string]$BackendBase = "http://localhost:8080",
     [string]$OutputRoot = ""
@@ -47,8 +48,11 @@ Write-Host "镜像就绪：$ffmpegImage"
 
 # 取视频清单（标题/类型只需 id 与源文件可用性）
 Write-Step "确定待转码视频"
-$ids = $VideoIds
-if (-not $ids -or $ids.Count -eq 0) {
+$ids = @()
+if ($VideoIds.Trim()) {
+    $ids = @($VideoIds -split '[,\s]+' | Where-Object { $_ } | ForEach-Object { [int]$_ })
+}
+if ($ids.Count -eq 0) {
     $listJson = curl.exe -s "$BackendBase/api/v1/videos/recommend?page=1&pageSize=100" --max-time 30
     $list = $listJson | ConvertFrom-Json
     $ids = @($list.data.items | ForEach-Object { [int]$_.id })
@@ -70,13 +74,38 @@ foreach ($id in $ids) {
 
     Write-Step "转码 video $id"
     $src = Join-Path $work "$id.mp4"
-    # 通过后端 /source 取源文件，避免直接访问对象存储
-    curl.exe -s "$BackendBase/api/v1/videos/$id/source" -o $src --max-time 600
-    if (-not (Test-Path $src) -or (Get-Item $src).Length -lt 1024) {
-        Write-Warning "  取源文件失败，跳过 $id"
+    Remove-Item $src -Force -ErrorAction SilentlyContinue
+    # 通过后端 /source 取源文件，避免直接访问对象存储。
+    #
+    # 必须用 curl.exe：实测 Invoke-WebRequest 下载 53MB 的源文件时只写入约 17MB 却
+    # 报告成功（静默截断），导致 ffmpeg 报 "moov atom not found"；curl 0.5s 即完整取回。
+    # 因此这里还额外校验 Content-Length，遇到截断就显式失败而不是把坏文件喂给 ffmpeg。
+    $headFile = Join-Path $work "$id.head"
+    Remove-Item $headFile -Force -ErrorAction SilentlyContinue
+    curl.exe -s -D $headFile -o NUL "$BackendBase/api/v1/videos/$id/source" --max-time 60 | Out-Null
+    $expected = 0
+    if (Test-Path $headFile) {
+        foreach ($line in (Get-Content $headFile -Encoding ASCII)) {
+            $text = [string]$line
+            if ($text -match '^(?i)content-length:\s*(\d+)') { $expected = [int64]$Matches[1] }
+        }
+    }
+    curl.exe -s -o $src "$BackendBase/api/v1/videos/$id/source" --max-time 900
+    $curlExit = $LASTEXITCODE
+    if ($curlExit -ne 0 -or -not (Test-Path $src)) {
+        Write-Warning "  下载失败（curl exit $curlExit），跳过 $id"
         continue
     }
-    $sizeMb = [math]::Round((Get-Item $src).Length / 1MB, 2)
+    $actual = (Get-Item $src).Length
+    if ($expected -gt 0 -and $actual -ne $expected) {
+        Write-Warning "  下载不完整（$actual / $expected 字节），跳过 $id"
+        continue
+    }
+    if ($actual -lt 1024) {
+        Write-Warning "  源文件过小（$actual 字节），跳过 $id"
+        continue
+    }
+    $sizeMb = [math]::Round($actual / 1MB, 2)
     Write-Host "  源文件 $sizeMb MB"
 
     Remove-Item -Recurse -Force $target -ErrorAction SilentlyContinue

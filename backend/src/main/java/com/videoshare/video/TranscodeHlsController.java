@@ -39,7 +39,7 @@ public class TranscodeHlsController {
     private final VideoService videos;
     private final Path root;
 
-    public TranscodeHlsController(VideoService videos, @Value("${app.hls.root:./data/hls}") String root) {
+    public TranscodeHlsController(VideoService videos, @Value("${app.hls.root:../data/hls}") String root) {
         this.videos = videos;
         this.root = Path.of(root).toAbsolutePath().normalize();
     }
