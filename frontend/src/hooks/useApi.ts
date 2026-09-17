@@ -19,6 +19,7 @@ import type {
   AppNotification,
   CommentItem,
   CommentQuery,
+  DanmakuItem,
   DirectMessage,
   PageData,
   PlatformSettings,
@@ -106,8 +107,45 @@ export function useVideoSearch(query: SearchQuery, enabled = true) {
   });
 }
 
-export function useShortsFeed() {
-  return useInfiniteQuery({
+/** 创作者搜索（搜索页「创作者」标签）。 */
+export function useUserSearch(query: { q: string; page?: number; pageSize?: number }, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.user.search({ q: query.q, page: query.page }),
+    queryFn: () => userApi.search(query),
+    enabled: enabled && query.q.trim().length > 0,
+    placeholderData: (prev) => prev,
+  });
+}
+
+/** 弹幕时间线（未登录也可看）。 */
+export function useDanmaku(videoId: number) {
+  return useQuery({
+    queryKey: queryKeys.videos.danmaku(videoId),
+    queryFn: () => videoApi.danmaku(videoId),
+    enabled: videoId > 0,
+  });
+}
+
+/** 发送弹幕。 */
+export function useSendDanmaku(videoId: number) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (payload: { content: string; timeMs: number; color?: string; position?: DanmakuItem['position'] }) =>
+      videoApi.sendDanmaku(videoId, payload),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.videos.danmaku(videoId) }),
+  });
+}
+
+/** 字幕轨道。 */
+export function useSubtitles(videoId: number) {
+  return useQuery({
+    queryKey: queryKeys.videos.subtitles(videoId),
+    queryFn: () => videoApi.subtitles(videoId),
+    enabled: videoId > 0,
+  });
+}
+
+export function useShortsFeed() {  return useInfiniteQuery({
     queryKey: queryKeys.videos.shorts(),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) => videoApi.shorts({ cursor: pageParam, pageSize: 6 }),
@@ -339,6 +377,11 @@ export function usePostComment(videoId: number, query: CommentQuery = {}) {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: ['comments', videoId] });
       client.invalidateQueries({ queryKey: queryKeys.videos.detail(videoId) });
+      /*
+       * 短视频页的评论数来自 feed 缓存，不失效的话右侧面板标题会一直显示旧值
+       * （面板内列表已更新，两处数字对不上）。
+       */
+      client.invalidateQueries({ queryKey: queryKeys.videos.shorts() });
     },
   });
 }
@@ -486,6 +529,11 @@ export function useToggleFollow() {
     onSuccess: (data, vars) => {
       void data;
       toast({ title: vars.active ? '已关注' : '已取消关注', tone: 'success' });
+      /*
+       * 失效整个 user 前缀：既覆盖创作者主页（profile），也覆盖推荐关注列表
+       * （queryKeys.user.suggested = ['user','suggested'] 同前缀）。
+       * 推荐列表的 followed 标记来自服务端缓存（60s TTL），不失效就会滞后。
+       */
       client.invalidateQueries({ queryKey: ['user'] });
     },
   });
@@ -567,6 +615,25 @@ export function useMessages(conversationId: number) {
   });
 }
 
+/** 打开与某用户的会话（不存在则创建），用于个人主页「发私信」。 */
+export function useOpenConversation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (peerId: number) => messageApi.openConversation(peerId),
+    onSuccess: () => {
+      // 新会话要出现在左侧列表里，否则跳转过去会落回第一个会话
+      client.invalidateQueries({ queryKey: queryKeys.messages.conversations });
+    },
+  });
+}
+
+/** 私信附件上传（本地图片/视频 → 对象存储）。 */
+export function useUploadMessageAttachment() {
+  return useMutation({
+    mutationFn: (file: File) => messageApi.uploadAttachment(file),
+  });
+}
+
 export function useSendMessage(conversationId: number) {
   const client = useQueryClient();
   return useMutation({
@@ -636,8 +703,34 @@ export function useReportTasks(query: AdminQuery = {}) {
   });
 }
 
-export function useHandleReport() {
+/** 实名认证待审队列（审核员/管理员）。 */
+export function useRealNameTasks(query: AdminQuery = {}) {
+  const can = useAuthStore((s) => s.user?.permissions.includes('moderation:realname') ?? false);
+  return useQuery({
+    queryKey: queryKeys.admin.realNames(query as Record<string, unknown>),
+    queryFn: () => adminApi.realNames(query),
+    enabled: can,
+  });
+}
+
+export function useDecideRealName() {
   const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, decision, note }: { userId: number; decision: 'APPROVE' | 'REJECT'; note?: string }) =>
+      adminApi.decideRealName(userId, decision, note),
+    onSuccess: (_d, vars) => {
+      client.invalidateQueries({ queryKey: ['admin', 'real-names'] });
+      // 认证状态会影响用户资料上的认证标识
+      client.invalidateQueries({ queryKey: ['user'] });
+      useUiStore.getState().toast({
+        title: vars.decision === 'APPROVE' ? '已通过实名认证' : '已驳回实名认证',
+        tone: vars.decision === 'APPROVE' ? 'success' : 'warning',
+      });
+    },
+  });
+}
+
+export function useHandleReport() {  const client = useQueryClient();
   return useMutation({
     mutationFn: ({ reportId, status, note }: { reportId: number; status: 'PROCESSING' | 'RESOLVED' | 'REJECTED'; note?: string }) =>
       adminApi.handleReport(reportId, status, note),

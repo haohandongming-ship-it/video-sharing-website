@@ -53,11 +53,17 @@ public class SecurityConfig {
                         (request, response, ex) -> errors.write(response, 401, ErrorCode.UNAUTHORIZED, "请先登录")))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error", "/actuator/health", "/v3/api-docs/**", "/swagger-ui/**",
-                                "/swagger-ui.html", "/ws/**", "/api/v1/auth/**", "/api/v1/uploads/*/parts/*").permitAll()
+                                "/swagger-ui.html", "/ws/**", "/api/v1/auth/**", "/api/v1/uploads/*/parts/*",
+                                // 演示 HLS 清单与分片：播放器需要在无凭证下按相对路径拉取
+                                "/api/v1/demo/hls/**",
+                                // 转码产出的 HLS：同理，清单与分片要能被播放器直接拉取
+                                "/api/v1/videos/*/hls/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/videos/*/view").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/comments/*/replies", "/api/v1/categories",
                                 "/api/v1/videos/**", "/api/v1/users/**", "/api/v1/feeds/**",
-                                "/api/v1/notifications/unread-count", "/api/v1/transcode/**", "/api/v1/sse/**").permitAll()
+                                "/api/v1/notifications/unread-count", "/api/v1/transcode/**", "/api/v1/sse/**",
+                                // 本地存储模式下头像等小对象的读取入口（MinIO 模式不经过这里）
+                                "/api/v1/media/**").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(requestedWith, UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwt, UsernamePasswordAuthenticationFilter.class)

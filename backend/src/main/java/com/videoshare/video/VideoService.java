@@ -22,12 +22,35 @@ public class VideoService {
     private final VideoCatalog catalog;
     private final VideoTags tags;
     private final ViewFactory views;
+    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
 
-    public VideoService(VideoRepository videos, VideoCatalog catalog, VideoTags tags, ViewFactory views) {
+    public VideoService(VideoRepository videos, VideoCatalog catalog, VideoTags tags, ViewFactory views,
+                        org.springframework.jdbc.core.JdbcTemplate jdbc) {
         this.videos = videos;
         this.catalog = catalog;
         this.tags = tags;
         this.views = views;
+        this.jdbc = jdbc;
+    }
+
+    /**
+     * 字幕轨道（含对象 key，由调用方拼公开地址）。
+     * 目前上传链路不产出字幕文件，通常返回空列表。
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<java.util.Map<String, Object>> subtitleRows(long videoId) {
+        return jdbc.query("""
+                SELECT language_code,label,object_key,format,is_default FROM subtitles
+                WHERE video_id=? ORDER BY is_default DESC, id ASC""",
+                (rs, n) -> {
+                    java.util.Map<String, Object> m = new java.util.LinkedHashMap<>();
+                    m.put("languageCode", rs.getString("language_code"));
+                    m.put("label", rs.getString("label"));
+                    m.put("objectKey", rs.getString("object_key"));
+                    m.put("format", rs.getString("format"));
+                    m.put("isDefault", rs.getBoolean("is_default"));
+                    return m;
+                }, videoId);
     }
 
     @Transactional(readOnly = true)
@@ -83,8 +106,7 @@ public class VideoService {
         return video;
     }
 
-    private void owner(Video video, CurrentUser current) {
-        if (current == null) throw new ApiException(ErrorCode.UNAUTHORIZED, "请先登录");
+    private void owner(Video video, CurrentUser current) {        if (current == null) throw new ApiException(ErrorCode.UNAUTHORIZED, "请先登录");
         if (video.getUserId() != current.id() && current.role() != Role.ADMIN) {
             throw new ApiException(ErrorCode.FORBIDDEN, "不能操作其他用户的视频");
         }

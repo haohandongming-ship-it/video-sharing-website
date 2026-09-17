@@ -364,7 +364,11 @@ function RepostForm({ post, onClose }: { post: FeedPost; onClose: () => void }) 
 function SuggestedPanel() {
   const { data, isLoading, isError, refetch } = useSuggestedUsers();
   const toggleFollow = useToggleFollow();
-  const [followed, setFollowed] = useState<Record<number, boolean>>({});
+  /*
+   * 关注状态以服务端返回的 `followed` 为准，本地 state 只记录「本次会话刚点过」的乐观结果。
+   * 此前只读本地 state（初始为空对象），一进页面所有已关注用户都显示成未关注。
+   */
+  const [optimisticFollow, setOptimisticFollow] = useState<Record<number, boolean>>({});
   const users = (data ?? []).slice(0, 5);
 
   return (
@@ -401,9 +405,9 @@ function SuggestedPanel() {
               />
               <SubscribeButton
                 size="xs"
-                active={Boolean(followed[user.id])}
+                active={optimisticFollow[user.id] ?? user.followed}
                 onToggle={(next) => {
-                  setFollowed((prev) => ({ ...prev, [user.id]: next }));
+                  setOptimisticFollow((prev) => ({ ...prev, [user.id]: next }));
                   toggleFollow.mutate({ userId: user.id, active: next });
                 }}
               />

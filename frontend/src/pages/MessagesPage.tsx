@@ -36,6 +36,7 @@ import {
   useNotifications,
   useSendMessage,
   useUnreadCount,
+  useUploadMessageAttachment,
 } from '@/hooks/useApi';
 import {
   Avatar,
@@ -174,11 +175,25 @@ function NotificationSection() {
   const unreadCount = unreadData?.count ?? data?.unreadCount ?? 0;
 
   const items = useMemo(() => data?.items ?? [], [data]);
-  /** 计数取信息更全的一份：实时推送累积的列表优先，否则退回当前页数据 */
-  const counts = useMemo(
-    () => countByType(storeItems.length >= items.length ? storeItems : items),
-    [storeItems, items],
-  );
+  /**
+   * 各类型计数一律以服务端为准（`typeCounts`）。
+   *
+   * 此前是从「当前已加载的那一页」在前端统计的，初始只加载全部类型的第一页，
+   * 没出现在该页的类型恒为 0，点进去才变——就是「不点击显示 0」的原因。
+   * 本地列表只在服务端字段缺失时兜底（例如旧缓存响应）。
+   */
+  const counts = useMemo<Record<NotificationFilter, number>>(() => {
+    const server = data?.typeCounts;
+    if (server) {
+      const next = {} as Record<NotificationFilter, number>;
+      for (const key of FILTER_ORDER) {
+        next[key] = key === 'ALL' ? (data?.total ?? 0) : (server[key] ?? 0);
+      }
+      return next;
+    }
+    const fallback = countByType(storeItems.length >= items.length ? storeItems : items);
+    return { ...fallback, ALL: data?.total ?? fallback.ALL };
+  }, [data, storeItems, items]);
 
   function selectFilter(next: NotificationFilter) {
     setType(next);
@@ -359,6 +374,9 @@ function MessageSection() {
   });
   const [draft, setDraft] = useState('');
   const [attachment, setAttachment] = useState<DirectMessage['attachment']>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+  const uploadAttachment = useUploadMessageAttachment();
 
   /** ?c= 未指定或返回列表（0）时落到第一个会话 */
   const selectedId = pickedId ?? conversations[0]?.id ?? 0;
@@ -399,7 +417,9 @@ function MessageSection() {
 
   function handleSend() {
     const content = draft.trim();
-    if (!content || selectedId <= 0 || sendingRef.current || send.isPending) return;
+    // 允许「只有附件」的消息：只要有正文或附件之一即可发送
+    const hasAttachment = attachment !== null;
+    if ((!content && !hasAttachment) || selectedId <= 0 || sendingRef.current || send.isPending) return;
     sendingRef.current = true;
     const key = queryKeys.messages.thread(selectedId);
     const previous = client.getQueryData<DirectMessage[]>(key);
@@ -428,12 +448,33 @@ function MessageSection() {
     });
   }
 
-  function attachmentHint(type: 'IMAGE' | 'VIDEO') {
-    const url = window.prompt(type === 'IMAGE' ? '粘贴图片地址（http/https）' : '粘贴视频地址（http/https）');
-    if (!url?.trim()) return;
-    try { new URL(url.trim()); } catch { toast({ title: '附件地址无效', tone: 'error' }); return; }
-    setAttachment({ type, url: url.trim() });
-    toast({ title: '附件已添加', description: '发送消息后附件会随消息保存。', tone: 'success' });
+  /**
+   * 选择本地文件后先上传到对象存储，拿到 URL 再作为待发送附件。
+   * 这样发送的消息里保存的是一条可访问地址，而不是用户本地路径。
+   */
+  async function uploadAttachmentFile(file: File) {
+    // 先做一次前端预检，避免把明显超限的文件传上去浪费带宽
+    const isVideo = file.type.startsWith('video/');
+    const limitMb = isVideo ? 50 : 5;
+    if (!file.type.startsWith('image/') && !isVideo) {
+      toast({ title: '只支持图片或视频', tone: 'warning' });
+      return;
+    }
+    if (file.size > limitMb * 1024 * 1024) {
+      toast({ title: `文件过大`, description: `${isVideo ? '视频' : '图片'}不能超过 ${limitMb}MB`, tone: 'warning' });
+      return;
+    }
+    try {
+      const uploaded = await uploadAttachment.mutateAsync(file);
+      setAttachment(uploaded);
+      toast({ title: '附件已添加', description: '发送消息后附件会随消息保存。', tone: 'success' });
+    } catch (error) {
+      toast({
+        title: '附件上传失败',
+        description: error instanceof Error ? error.message : '请稍后重试',
+        tone: 'error',
+      });
+    }
   }
 
   return (
@@ -575,9 +616,25 @@ function MessageSection() {
                               message.pending && 'opacity-70',
                             )}
                           >
-                            {message.content}
-                            {message.attachment?.type === 'IMAGE' && <img src={message.attachment.url} alt="消息图片" className="mt-2 max-h-48 max-w-full rounded" />}
-                            {message.attachment?.type === 'VIDEO' && <a href={message.attachment.url} target="_blank" rel="noreferrer" className="mt-1 block text-[11px] underline">打开视频附件</a>}
+                            {/* 纯附件消息正文为空，不渲染空文本节点，也避免多余的上间距 */}
+                            {message.content && <span>{message.content}</span>}
+                            {message.attachment?.type === 'IMAGE' && (
+                              <img
+                                src={message.attachment.url}
+                                alt="消息图片"
+                                className={cn('max-h-48 max-w-full rounded', message.content && 'mt-2')}
+                              />
+                            )}
+                            {message.attachment?.type === 'VIDEO' && (
+                              <a
+                                href={message.attachment.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className={cn('block text-[11px] underline', message.content && 'mt-1')}
+                              >
+                                打开视频附件
+                              </a>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -597,7 +654,12 @@ function MessageSection() {
                 placeholder="输入消息，回车发送，Shift + 回车换行"
                 onChange={(event) => setDraft(event.target.value)}
                 onKeyDown={(event) => {
-                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  /*
+                   * 回车发送：有正文或有附件都算「可发送」。
+                   * 两者都没有时不拦截回车，让输入框保持正常换行行为。
+                   */
+                  const canSend = draft.trim().length > 0 || attachment !== null;
+                  if (canSend && event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
                     event.preventDefault();
                     handleSend();
                   }
@@ -605,13 +667,53 @@ function MessageSection() {
               />
               <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-1">
-                  <IconButton label="发送图片" size="icon-sm" onClick={() => attachmentHint('IMAGE')}>
+                  {/*
+                    改为真正的文件选择 + 上传：此前用 window.prompt 只收 http/https 地址，
+                    用户无法发送本地图片或视频。
+                  */}
+                  <IconButton
+                    label="发送图片"
+                    size="icon-sm"
+                    disabled={uploadAttachment.isPending}
+                    onClick={() => imageInputRef.current?.click()}
+                  >
                     <ImageIcon className="size-4" />
                   </IconButton>
-                  <IconButton label="发送视频" size="icon-sm" onClick={() => attachmentHint('VIDEO')}>
+                  <IconButton
+                    label="发送视频"
+                    size="icon-sm"
+                    disabled={uploadAttachment.isPending}
+                    onClick={() => videoInputRef.current?.click()}
+                  >
                     <Video className="size-4" />
                   </IconButton>
-                  <span className="ml-1 text-[11px] text-fg-subtle">支持粘贴图片或视频地址</span>
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/png,image/jpeg,image/gif,image/webp"
+                    className="sr-only"
+                    aria-label="选择图片文件"
+                    onChange={(event) => {
+                      const picked = event.target.files?.[0];
+                      if (picked) void uploadAttachmentFile(picked);
+                      event.target.value = '';
+                    }}
+                  />
+                  <input
+                    ref={videoInputRef}
+                    type="file"
+                    accept="video/mp4,video/quicktime,video/webm"
+                    className="sr-only"
+                    aria-label="选择视频文件"
+                    onChange={(event) => {
+                      const picked = event.target.files?.[0];
+                      if (picked) void uploadAttachmentFile(picked);
+                      event.target.value = '';
+                    }}
+                  />
+                  <span className="ml-1 text-[11px] text-fg-subtle">
+                    {uploadAttachment.isPending ? '附件上传中…' : attachment ? '附件已就绪，发送后随消息保存' : '支持图片（5MB）、视频（50MB）'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-[11px] tabular-nums text-fg-subtle">
@@ -621,7 +723,7 @@ function MessageSection() {
                     variant="primary"
                     size="sm"
                     icon={<Send className="size-3.5" />}
-                    disabled={draft.trim().length === 0}
+                    disabled={draft.trim().length === 0 && attachment === null}
                     loading={send.isPending}
                     onClick={handleSend}
                   >

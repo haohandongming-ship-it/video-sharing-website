@@ -120,6 +120,31 @@
   --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
   --animate-spin-slow: spin 1.2s linear infinite;
 
+  /*
+   * 弹幕从右向左滚动。用纯 CSS 动画而不是 JS 逐帧驱动：
+   * 一条弹幕只挂一次 animation，由合成层独立运行，不随 currentTime 更新触发重排。
+   * 元素以 left:100% 贴在容器右外沿，横移距离 = 自身宽度 + 容器宽度（--dm-distance 由组件测量后注入），
+   * 末尾淡出，避免暂停时留下静止的弹幕残影。
+   */
+  --animate-danmaku-scroll: danmaku-scroll linear forwards;
+
+  @keyframes danmaku-scroll {
+    0% {
+      transform: translateX(0);
+      opacity: 0;
+    }
+    4% {
+      opacity: 1;
+    }
+    92% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateX(calc(-100% - var(--dm-distance, 100%)));
+      opacity: 0;
+    }
+  }
+
   @keyframes shimmer {
     0% {
       background-position: -180% 0;

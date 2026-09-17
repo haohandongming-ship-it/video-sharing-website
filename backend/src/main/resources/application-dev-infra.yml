@@ -1,0 +1,30 @@
+# 本地开发 + 真实基础设施：用 Docker 起 MySQL / Redis / MinIO，后端仍在宿主机用 Maven 运行。
+# 与 dev 的区别：数据库从 H2 文件库换成 MySQL，对象存储从本地目录换成 MinIO；
+# JWT / 加密密钥等仍复用根目录 .env（由 scripts/start-backend.ps1 注入）。
+#
+# 启动方式：
+#   docker compose -f docker-compose.yml -f docker-compose.dev-infra.yml up -d mysql redis minio
+#   powershell -File scripts/start-backend.ps1 -Profile dev-infra
+spring:
+  datasource:
+    # MySQL 容器在宿主机映射到 13306（3306 被本机原生 MySQL 服务占用）
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:13306}/${MYSQL_DATABASE:video_platform}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&useSSL=false
+    username: ${MYSQL_USER:video}
+    password: ${MYSQL_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+
+app:
+  storage:
+    mode: minio
+    # 后端跑在宿主机，因此两个地址都是 localhost；public-endpoint 用于生成浏览器可访问的预签名地址
+    endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+    public-endpoint: ${MINIO_PUBLIC_ENDPOINT:http://localhost:9000}
+    access-key: ${MINIO_USER}
+    secret-key: ${MINIO_PASSWORD}
+    bucket: ${MINIO_BUCKET:video-platform}

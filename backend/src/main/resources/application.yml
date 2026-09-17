@@ -61,6 +61,14 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: 20s
 
+  servlet:
+    multipart:
+      # 上限由私信附件决定（视频 50MB）。容器层仍留余量并高于业务校验，
+      # 超限时返回的是业务自己的中文提示，而不是框架异常。
+      # 各类型的具体上限在服务层校验：头像 2MB、封面 4MB、私信图片 5MB、私信视频 50MB。
+      max-file-size: 52MB
+      max-request-size: 60MB
+
 server:
   shutdown: graceful
   compression:
@@ -113,3 +121,6 @@ app:
     # 留空时返回相对上传地址，局域网客户端会通过前端反代访问当前服务器，避免误连客户端 localhost。
     public-base-url: ${STORAGE_PUBLIC_BASE_URL:}
     signing-secret: ${STORAGE_SIGNING_SECRET:}
+  # 多码率 HLS 转码产物目录（scripts/transcode-hls.ps1 的输出），由 TranscodeHlsController 提供。
+  hls:
+    root: ${HLS_ROOT:./data/hls}

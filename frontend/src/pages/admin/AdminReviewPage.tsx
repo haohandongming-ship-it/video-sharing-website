@@ -265,7 +265,12 @@ export default function AdminReviewPage() {
 
   const items = query.data?.items;
   const visible = useMemo(() => {
-    const list = items ?? [];
+    /*
+     * 先丢弃 video 缺失的任务：审核行渲染时会读 task.video.title / coverUrl / author，
+     * 一条 video 为 null 的记录（视频已删除但审核任务还在）就会让整个后台抛错白屏。
+     * 后端已用 INNER JOIN videos 过滤这类孤儿行，这里再兜一层，保证坏数据不会打穿界面。
+     */
+    const list = (items ?? []).filter((task) => task.video);
     const term = keyword.trim().toLowerCase();
     return term ? list.filter((task) => task.video.title.toLowerCase().includes(term)) : list;
   }, [items, keyword]);

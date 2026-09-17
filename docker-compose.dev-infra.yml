@@ -1,0 +1,42 @@
+# 本地开发基础设施覆盖层：在基座 docker-compose.yml 之上，只启动 MySQL / Redis / MinIO，
+# 并把端口发布到宿主机，供本机用 Maven 运行的后端（SPRING_PROFILES_ACTIVE=dev-infra）连接。
+#
+# 这是覆盖层，必须与基座文件一起加载（顺序不能颠倒：基座在前，覆盖在后）：
+#   docker compose -f docker-compose.yml -f docker-compose.dev-infra.yml up -d
+#   docker compose -f docker-compose.yml -f docker-compose.dev-infra.yml ps
+#   docker compose -f docker-compose.yml -f docker-compose.dev-infra.yml down     # 保留数据卷
+#   docker compose -f docker-compose.yml -f docker-compose.dev-infra.yml down -v  # 连数据卷一起删
+#
+# 说明：
+# - ports 是列表字段，覆盖层会整体替换基座定义，避免与生产映射叠加；
+# - 密码等取自根目录 .env（compose 自动读取），与后端共用同一份来源；
+# - MySQL 发布到 13306：本机已有一个原生 MySQL 服务占用 3306，容器无法再绑定该端口。
+#   可用 .env 里的 MYSQL_PORT 覆盖；
+# - RocketMQ 未在任何后端代码中被使用（pom.xml 无相关依赖），默认不启动；
+#   需要时追加 `--profile mq`。
+name: video-sharing-platform
+
+services:
+  mysql:
+    ports:
+      - "${MYSQL_PORT:-13306}:3306"
+
+  redis:
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+
+  minio:
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+
+  rocketmq-nameserver:
+    profiles: ["mq"]
+    ports:
+      - "9876:9876"
+
+  rocketmq-broker:
+    profiles: ["mq"]
+    ports:
+      - "10909:10909"
+      - "10911:10911"

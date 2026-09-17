@@ -6,6 +6,7 @@ import type {
   AuditLogRow,
   PageData,
   PlatformSettings,
+  RealNameTask,
   ReportTask,
   ReviewTask,
   Role,
@@ -29,6 +30,18 @@ export const adminApi = {
 
   reports: (query: AdminQuery = {}) =>
     http.get<PageData<ReportTask>>('/api/v1/admin/reports', { query: { ...query }, auth: true }),
+
+  /** 实名认证待审队列 */
+  realNames: (query: AdminQuery = {}) =>
+    http.get<PageData<RealNameTask>>('/api/v1/admin/real-names', { query: { ...query }, auth: true }),
+
+  /** 实名认证决定：通过 / 驳回（含原因） */
+  decideRealName: (userId: number, decision: 'APPROVE' | 'REJECT', note?: string) =>
+    http.post<{ success: boolean; status: string }>(
+      `/api/v1/admin/real-names/${userId}/decision`,
+      { decision, note },
+      { auth: true, idempotent: true },
+    ),
 
   handleReport: (reportId: number, status: ReportTask['status'], note?: string) =>
     http.post<{ success: boolean; status: string }>(

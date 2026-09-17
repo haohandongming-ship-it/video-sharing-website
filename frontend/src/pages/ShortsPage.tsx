@@ -15,15 +15,19 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { formatCount } from '@/lib/format';
-import { useComments, useShortsFeed } from '@/hooks/useApi';
+import { useDanmaku, useSendDanmaku, useShortsFeed, useSubtitles } from '@/hooks/useApi';
 import { videoApi } from '@/api/videos';
 import { useAuthStore } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
+import { usePlayerStore } from '@/stores/playerStore';
 import { Avatar, Badge, Button, EmptyState, ErrorState, Spinner } from '@/components/ui';
+import { DanmakuButton } from '@/components/video/DanmakuButton';
+import { DanmakuLayer } from '@/components/video/DanmakuLayer';
+import { ShortsSidePanel, type ShortsPanelTab } from '@/components/video/ShortsSidePanel';
 import { ShortVideoPlayer } from '@/components/video/VideoPlayer';
 import { ShareDialog } from '@/components/video/ShareDialog';
 import { ReportDialog } from '@/components/video/ReportDialog';
-import type { VideoSummary } from '@/api/types';
+import type { Quality, VideoSummary } from '@/api/types';
 
 /** 触摸/鼠标滑动的判定阈值与速度阈值（文档 5.6：指针拖拽 + 速度检测） */
 const SWIPE_DISTANCE = 60;
@@ -59,10 +63,24 @@ export default function ShortsPage() {
   const [fastForward, setFastForward] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [commentsOpen, setCommentsOpen] = useState(false);
   const [hint, setHint] = useState<string | null>(null);
   const [localLikes, setLocalLikes] = useState<Record<number, boolean>>({});
   const [localFavorites, setLocalFavorites] = useState<Record<number, boolean>>({});
+
+  /* ---- 右侧面板与播放设置（对齐抖音式排版：右侧信息面板 + 底部控制栏） ---- */
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [panelTab, setPanelTab] = useState<ShortsPanelTab>('comments');
+  const [danmakuOn, setDanmakuOn] = useState(true);
+  const [subtitlesOn, setSubtitlesOn] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [levels, setLevels] = useState<{ index: number; name: string; height: number }[]>([]);
+  const setPlayerLevelRef = useRef<((index: number) => void) | null>(null);
+
+  /** 清晰度与倍速与长视频共用偏好，保持两处一致 */
+  const storeQuality = usePlayerStore((s) => s.quality);
+  const setStoreQuality = usePlayerStore((s) => s.setQuality);
+  const storeRate = usePlayerStore((s) => s.playbackRate);
+  const setStoreRate = usePlayerStore((s) => s.setPlaybackRate);
   const setLocalLike = (videoId: number, active: boolean) =>
     setLocalLikes((prev) => ({ ...prev, [videoId]: active }));
 
@@ -84,6 +102,13 @@ export default function ShortsPage() {
   }, [requested.isError, requestedId, toast]);
 
   const current: VideoSummary | undefined = videos[index];
+
+  /* 弹幕与字幕：仅在当前视频变化时重新拉取 */
+  const danmakuQuery = useDanmaku(current?.id ?? 0);
+  const sendDanmaku = useSendDanmaku(current?.id ?? 0);
+  const subtitles = useSubtitles(current?.id ?? 0);
+  const danmakuItems = danmakuQuery.data ?? [];
+  const subtitleTracks = subtitles.data ?? [];
 
   /* 深链：?v=<id> 定位到指定短视频（渲染期同步，避免首帧闪动） */
   const [deepLinkApplied, setDeepLinkApplied] = useState<number | null>(null);
@@ -293,20 +318,34 @@ export default function ShortsPage() {
   }
 
   return (
-    <div
-      ref={containerRef}
-      className="relative size-full overflow-hidden bg-black touch-none"
-      onWheel={handleWheel}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={onPointerUp}
-      onPointerCancel={() => {
-        if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
-        dragStart.current = null;
-        setFastForward(false);
-        setHint(null);
-      }}
-    >
+    /*
+     * 大屏（lg+）下把视频约束到居中的竖屏列 —— 与抖音桌面版一致：
+     * 只有视频被约束住，右侧才腾得出空间让评论面板与视频并排显示。
+     * 小屏保持全屏沉浸式，评论区改为底部抽屉（右侧确实没有位置）。
+     */
+    <div className="flex size-full bg-black">
+      <div
+        ref={containerRef}
+        /*
+         * 大屏下视频列占视口 1/2（宽屏另有 760px 上限，避免超宽屏上被拉得过大）。
+         * 右侧面板是绝对定位的 380px，占半屏时两者不会重叠：720 + 380 = 1100 < 1440。
+         *
+         * --pcb-height 是播放器控制栏的实测高度（90px）加上少量余量，供底部信息区避让；
+         * 放在这里而不是控制栏上，是因为信息区可能在控制栏挂载前就已渲染。
+         */
+        style={{ '--pcb-height': '6rem' } as React.CSSProperties}
+        className="relative h-full w-full touch-none overflow-hidden bg-black lg:mx-auto lg:w-1/2 lg:max-w-[760px]"
+        onWheel={handleWheel}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => {
+          if (longPressTimer.current) window.clearTimeout(longPressTimer.current);
+          dragStart.current = null;
+          setFastForward(false);
+          setHint(null);
+        }}
+      >
       {/* 视频层 */}
       <AnimatePresence initial={false} custom={direction}>
         <motion.div
@@ -320,14 +359,51 @@ export default function ShortsPage() {
         >
           <ShortVideoPlayer
             src={current?.hlsUrl ?? ''}
-            playbackRate={fastForward ? 2 : 1}
+            playbackRate={storeRate}
             poster={current?.coverUrl}
             playing={!paused}
             muted={muted}
             onToggleMute={() => setMuted((v) => !v)}
+            onTogglePlay={() => setPaused((v) => !v)}
+            onTimeUpdate={(time) => setCurrentTime(time)}
+            onLevels={(next, _current, setLevel) => {
+              setLevels(next);
+              setPlayerLevelRef.current = setLevel;
+            }}
+            /* 与长视频同一套控制栏：倍速 / 清晰度 / 字幕 / 画中画 / 全屏 */
+            showControls
+            levels={levels}
+            quality={storeQuality}
+            onQualityChange={(tier, levelIndex) => {
+              setStoreQuality(tier as Quality | null);
+              setPlayerLevelRef.current?.(levelIndex);
+            }}
+            onRateChange={setStoreRate}
+            hasSubtitles={subtitleTracks.length > 0}
+            subtitlesOn={subtitlesOn}
+            onToggleSubtitles={() => setSubtitlesOn((v) => !v)}
+            danmakuSlot={
+              <DanmakuButton
+                enabled={danmakuOn}
+                onToggleEnabled={() => setDanmakuOn((v) => !v)}
+                currentTime={currentTime}
+                onSend={async (content: string) => {
+                  if (!isLogin) {
+                    toast({ title: '登录后即可发送弹幕', tone: 'warning' });
+                    throw new Error('unauthorized');
+                  }
+                  await sendDanmaku.mutateAsync({ content, timeMs: Math.round(currentTime * 1000) });
+                  setHint('弹幕已发送');
+                }}
+              />
+            }
+            onHint={(text) => setHint(text)}
           />
         </motion.div>
       </AnimatePresence>
+
+      {/* 弹幕层：置于视频之上、控制栏之下（控制栏 z-20），pointer-events 关闭以免挡手势 */}
+      <DanmakuLayer items={danmakuItems} currentTime={currentTime} visible={danmakuOn} />
 
       {/* 播放/暂停指示 */}
       <AnimatePresence>
@@ -388,7 +464,10 @@ export default function ShortsPage() {
             icon={<MessageCircle className="size-7" />}
             label="评论"
             count={current.stats.comments}
-            onClick={() => setCommentsOpen(true)}
+            onClick={() => {
+              setPanelTab('comments');
+              setPanelOpen(true);
+            }}
           />
           <InteractionButton
             icon={<Bookmark className={cn('size-7', (localFavorites[current.id] ?? current.favorited) && 'fill-current text-brand')} />}
@@ -427,22 +506,25 @@ export default function ShortsPage() {
         </div>
       )}
 
-      {/* 底部信息区 */}
+      {/* 底部信息区：给下方控制栏留出高度并多留 8px 余量，避免两者贴边重叠 */}
       {current && (
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent p-4 pb-6 safe-bottom">
-          <div className="max-w-[76%]">
+        <div
+          className="pointer-events-none absolute inset-x-0 z-20 px-4 pb-2"
+          style={{ bottom: 'calc(var(--pcb-height, 5.5rem) + 8px)' }}
+        >
+          <div className="max-w-[76%] rounded-card bg-black/45 px-3 py-2 backdrop-blur-sm">
             <Link to={`/user/${current.author.id}`} className="pointer-events-auto flex items-center gap-2">
               <span className="text-sm font-semibold text-white">@{current.author.nickname}</span>
               {current.author.certified && <Badge tone="brand">认证</Badge>}
             </Link>
-            <p className="mt-2 line-clamp-3 text-[13px] leading-relaxed text-white/92">{current.title}</p>
-            <p className="mt-2 flex items-center gap-1.5 text-xs text-white/75">
-              <Music2 className="size-3.5" aria-hidden />
+            <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-white/92">{current.title}</p>
+            <p className="mt-1 flex items-center gap-1.5 text-[11px] text-white/70">
+              <Music2 className="size-3" aria-hidden />
               原声 · {current.author.nickname}
-            </p>
-            <p className="mt-1 flex items-center gap-3 text-[11px] text-white/60">
-              <span>{formatCount(current.stats.views)} 次播放</span>
-              <span>{current.category?.name}</span>
+              <span aria-hidden>·</span>
+              {formatCount(current.stats.views)} 次播放
+              <span aria-hidden>·</span>
+              {current.category?.name}
             </p>
           </div>
         </div>
@@ -498,18 +580,11 @@ export default function ShortsPage() {
         </AnimatePresence>
       </div>
 
-      {/* 手势提示 */}
-      <div className="pointer-events-none absolute bottom-6 left-1/2 z-20 hidden -translate-x-1/2 text-[11px] text-white/55 sm:block">
+      {/* 手势提示：底部信息区最高约 11rem，这里抬到其上方，避免压住弹幕输入框 */}
+      <div className="pointer-events-none absolute bottom-[12rem] left-1/2 z-20 hidden -translate-x-1/2 text-[11px] text-white/55 lg:block">
         上滑看下一个 · 双击点赞 · 长按 2 倍速
       </div>
-
-      {/* 评论抽屉 */}
-      <ShortsCommentSheet
-        open={commentsOpen}
-        onClose={() => setCommentsOpen(false)}
-        videoId={current?.id ?? 0}
-        commentCount={current?.stats.comments ?? 0}
-      />
+      </div>
 
       {current && (
         <>
@@ -528,6 +603,16 @@ export default function ShortsPage() {
             targetTitle={current.title}
           />
         </>
+      )}
+
+      {/* 右侧信息面板：详情 / TA的作品 / 评论 / 相关推荐（对齐抖音式排版） */}
+      {panelOpen && (
+        <ShortsSidePanel
+          video={current}
+          tab={panelTab}
+          onTabChange={setPanelTab}
+          onClose={() => setPanelOpen(false)}
+        />
       )}
     </div>
   );
@@ -564,61 +649,5 @@ function InteractionButton({
       </span>
       {count !== undefined && <span className="text-[11px] tabular-nums text-white/85">{formatCount(count)}</span>}
     </button>
-  );
-}
-
-/** 短视频评论抽屉：底部弹出，复用评论组件 */
-function ShortsCommentSheet({
-  open,
-  onClose,
-  videoId,
-  commentCount,
-}: {
-  open: boolean;
-  onClose: () => void;
-  videoId: number;
-  commentCount: number;
-}) {
-  if (!open || videoId === 0) return null;
-
-  return (
-    <div className="absolute inset-0 z-40 flex items-end" role="dialog" aria-modal="true" aria-label="评论">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <motion.div
-        initial={{ y: '100%' }}
-        animate={{ y: 0 }}
-        className="relative flex max-h-[76%] w-full flex-col rounded-t-2xl bg-surface"
-      >
-        <header className="flex items-center justify-between border-b border-line px-4 py-3">
-          <h2 className="text-sm font-semibold text-fg">评论 {formatCount(commentCount)}</h2>
-          <Button size="xs" variant="ghost" onClick={onClose}>
-            关闭
-          </Button>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-          <ShortsComments videoId={videoId} />
-        </div>
-      </motion.div>
-    </div>
-  );
-}
-
-function ShortsComments({ videoId }: { videoId: number }) {
-  const { data, isLoading } = useComments(videoId, { sort: 'hot', page: 1, pageSize: 20 });
-  if (isLoading) return <Spinner label="评论加载中" />;
-  const items = data?.items ?? [];
-  if (items.length === 0) return <p className="text-sm text-fg-muted">还没有评论，说点什么吧。</p>;
-  return (
-    <ul className="flex flex-col gap-4">
-      {items.map((item) => (
-        <li key={item.id} className="flex gap-3">
-          <Avatar src={item.user.avatar} name={item.user.nickname} size="sm" />
-          <div className="min-w-0">
-            <p className="text-[13px] font-medium text-fg">{item.user.nickname}</p>
-            <p className="mt-0.5 text-[13px] leading-relaxed text-fg-muted">{item.content}</p>
-          </div>
-        </li>
-      ))}
-    </ul>
   );
 }

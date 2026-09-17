@@ -324,7 +324,22 @@ public class SocialService {
         result.put("pageSize", normalizedSize);
         result.put("hasMore", (long) normalizedPage * normalizedSize < total);
         result.put("unreadCount", views.count("SELECT COUNT(*) FROM notifications WHERE user_id=? AND is_read=FALSE", userId));
+        /*
+         * 各类型计数由服务端一次 GROUP BY 给出。前端此前是从「当前已加载的那一页」统计的，
+         * 初始只加载“全部”的第一页，因此没出现在该页的类型恒显示 0，点进去才变——
+         * 这正是「数字要点击后才出现」的原因。
+         */
+        result.put("typeCounts", notificationTypeCounts(userId));
         return result;
+    }
+
+    /** 单次分组查询取回每个类型的通知条数；没有记录的类型不出现在结果里，前端按 0 处理。 */
+    private Map<String, Object> notificationTypeCounts(long userId) {
+        Map<String, Object> counts = new LinkedHashMap<>();
+        named.query("SELECT type, COUNT(*) AS amount FROM notifications WHERE user_id=:userId GROUP BY type",
+                Map.of("userId", userId),
+                (RowCallbackHandler) rs -> counts.put(rs.getString("type"), rs.getLong("amount")));
+        return counts;
     }
 
     @Transactional
@@ -354,10 +369,18 @@ public class SocialService {
                 .collect(Collectors.toSet());
         Map<Long, Map<String, Object>> peers = views.briefs(peerIds);
         Map<Long, String> lastMessages = new HashMap<>();
+        // 纯附件消息 content 为空，回退成类型占位，否则会话列表的预览会是空白
         named.query("""
-                SELECT conversation_id, content FROM direct_messages
+                SELECT conversation_id, content, attachment_type FROM direct_messages
                 WHERE id IN (SELECT MAX(id) FROM direct_messages WHERE conversation_id IN (:ids) GROUP BY conversation_id)""",
-                Map.of("ids", conversationIds), (RowCallbackHandler) rs -> lastMessages.put(rs.getLong(1), rs.getString(2)));
+                Map.of("ids", conversationIds), (RowCallbackHandler) rs -> {
+                    String content = rs.getString("content");
+                    String type = rs.getString("attachment_type");
+                    String preview = (content == null || content.isBlank()) && type != null
+                            ? ("VIDEO".equals(type) ? "[视频]" : "[图片]")
+                            : content;
+                    lastMessages.put(rs.getLong("conversation_id"), preview);
+                });
         Map<Long, Long> unread = new HashMap<>();
         named.query("""
                 SELECT conversation_id, COUNT(*) amount FROM direct_messages
@@ -391,8 +414,12 @@ public class SocialService {
     public Map<String, Object> sendMessage(long userId, long conversationId, Map<String, Object> body) {
         ownConversation(userId, conversationId);
         String content = Objects.toString(body.get("content"), "").trim();
-        if (content.isBlank()) throw new ApiException(ErrorCode.VALIDATION, "消息不能为空");
         Map<String, Object> attachment = attachment(body.get("attachment"));
+        /*
+         * 允许「只有附件」的消息：只要有正文或附件之一即可发送。
+         * content 列是 NOT NULL 但允许空字符串，因此纯附件消息写入空串。
+         */
+        if (content.isBlank() && attachment == null) throw new ApiException(ErrorCode.VALIDATION, "消息不能为空");
         KeyHolder keys = new GeneratedKeyHolder();
         named.update("""
                 INSERT INTO direct_messages(conversation_id,sender_id,content,attachment_type,attachment_url,attachment_video_id,is_read)
@@ -411,10 +438,17 @@ public class SocialService {
         long userA = ((Number) conversation.get("user_a_id")).longValue();
         long userB = ((Number) conversation.get("user_b_id")).longValue();
         long peer = userA == userId ? userB : userA;
+        // 纯附件消息没有正文，通知里用类型占位，避免出现空的通知内容
+        String preview = content.isBlank() ? attachmentPreview(attachment) : content;
         notifier.notify(peer, userId, "SYSTEM", "收到新私信",
-                content.length() > 80 ? content.substring(0, 80) + "…" : content, "USER", userId);
+                preview.length() > 80 ? preview.substring(0, 80) + "…" : preview, "USER", userId);
         return named.query("SELECT * FROM direct_messages WHERE id=:id", Map.of("id", id),
                 (rs, row) -> message(rs, userId)).getFirst();
+    }
+
+    private static String attachmentPreview(Map<String, Object> attachment) {
+        if (attachment == null) return "";
+        return "VIDEO".equals(attachment.get("type")) ? "[视频]" : "[图片]";
     }
 
     // ------------------------------------------------------------------ 渲染
@@ -571,6 +605,43 @@ public class SocialService {
         if (!views.bool("SELECT COUNT(*)>0 FROM conversations WHERE id=? AND (user_a_id=? OR user_b_id=?)", id, userId, userId)) {
             throw new ApiException(ErrorCode.FORBIDDEN, "无权访问该会话");
         }
+    }
+
+    /**
+     * 找到（没有则创建）与指定用户的会话，供个人主页「发私信」入口使用。
+     *
+     * <p>会话表对 (user_a_id,user_b_id) 有唯一约束，但<b>历史数据里方向并不固定</b>
+     * （例如 seeder 写的是 (laowang, admin)）。因此查询必须同时匹配正反两个方向，
+     * 否则同一条会话匹配不上、会再建一条反向的重复会话——UNIQUE 约束拦不住反向重复。
+     * 新建时统一按「小 id 在前」写入，保持新数据一致。
+     */
+    @Transactional
+    public Map<String, Object> openConversation(long userId, long peerId) {
+        if (userId == peerId) throw new ApiException(ErrorCode.VALIDATION, "不能给自己发私信");
+        if (count("SELECT COUNT(*) FROM users WHERE id=:id", Map.of("id", peerId)) == 0) {
+            throw new ApiException(ErrorCode.NOT_FOUND, "用户不存在");
+        }
+        long userA = Math.min(userId, peerId);
+        long userB = Math.max(userId, peerId);
+        List<Long> found = named.queryForList("""
+                SELECT id FROM conversations
+                WHERE (user_a_id=:a AND user_b_id=:b) OR (user_a_id=:b AND user_b_id=:a)
+                ORDER BY id LIMIT 1""",
+                Map.of("a", userA, "b", userB), Long.class);
+        long conversationId;
+        if (found.isEmpty()) {
+            KeyHolder keys = new GeneratedKeyHolder();
+            named.update("INSERT INTO conversations(user_a_id,user_b_id) VALUES(:a,:b)",
+                    new MapSqlParameterSource().addValue("a", userA).addValue("b", userB),
+                    keys, new String[]{"id"});
+            conversationId = Objects.requireNonNull(keys.getKey()).longValue();
+        } else {
+            conversationId = found.getFirst();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("id", conversationId);
+        result.put("peer", views.brief(peerId));
+        return result;
     }
 
     private long count(String sql, Map<String, Object> params) {

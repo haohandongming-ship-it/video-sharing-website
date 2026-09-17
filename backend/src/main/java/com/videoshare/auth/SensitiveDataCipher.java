@@ -54,4 +54,25 @@ public class SensitiveDataCipher {
             throw new IllegalStateException("敏感数据加密失败", ex);
         }
     }
+
+    /**
+     * 解密（实名审核需要读到原值）。
+     * 输入为 {@link #encrypt} 产出的「IV + 密文」Base64；格式不合法或密钥不匹配时抛异常，
+     * 由调用方决定如何兜底——审核队列不应因为单条脏数据整体失败。
+     */
+    public String decrypt(String encoded) {
+        if (encoded == null || encoded.isBlank()) return null;
+        try {
+            byte[] payload = Base64.getDecoder().decode(encoded);
+            if (payload.length <= IV_LENGTH) throw new IllegalArgumentException("密文长度不足");
+            byte[] iv = new byte[IV_LENGTH];
+            System.arraycopy(payload, 0, iv, 0, IV_LENGTH);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, key, new GCMParameterSpec(128, iv));
+            byte[] plain = cipher.doFinal(payload, IV_LENGTH, payload.length - IV_LENGTH);
+            return new String(plain, StandardCharsets.UTF_8);
+        } catch (GeneralSecurityException | IllegalArgumentException ex) {
+            throw new IllegalStateException("敏感数据解密失败", ex);
+        }
+    }
 }

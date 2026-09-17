@@ -11,6 +11,10 @@ export interface FollowUser extends UserBrief {
 export const userApi = {
   profile: (id: number) => http.get<UserProfile>(`/api/v1/users/${id}`),
 
+  /** 创作者搜索：按用户名/昵称匹配，结果带粉丝数与作品数 */
+  search: (query: { q: string; page?: number; pageSize?: number }) =>
+    http.get<PageData<UserBrief & { videoCount: number }>>('/api/v1/users/search', { query: { ...query } }),
+
   videos: (id: number, page = 1, pageSize = 12) =>
     http.get<PageData<VideoSummary>>(`/api/v1/users/${id}/videos`, { query: { page, pageSize } }),
 
@@ -34,7 +38,7 @@ export const userApi = {
     ),
 
   suggested: () =>
-    http.get<(UserBrief & { reason: string })[]>('/api/v1/users/suggested'),
+    http.get<(UserBrief & { reason: string; followed: boolean })[]>('/api/v1/users/suggested'),
 };
 
 export interface CreatorVideoRow extends VideoSummary {

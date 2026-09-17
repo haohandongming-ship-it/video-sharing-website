@@ -17,6 +17,7 @@ import type {
   DirectMessage,
   FeedPost,
   PlatformSettings,
+  RealNameTask,
   ReportTask,
   ReviewTask,
   Role,
@@ -170,6 +171,7 @@ const SEED_USERS: SeedUser[] = [
       ...BASE_PERMISSIONS,
       'moderation:review',
       'moderation:report',
+      'moderation:realname',
       'admin:user_manage',
       'admin:role_assign',
       'admin:system_config',
@@ -183,7 +185,7 @@ const SEED_USERS: SeedUser[] = [
     bio: '内容安全与社区规范。举报处理请走站内通道。',
     role: 'MODERATOR',
     certified: true,
-    permissions: [...BASE_PERMISSIONS, 'moderation:review', 'moderation:report'],
+    permissions: [...BASE_PERMISSIONS, 'moderation:review', 'moderation:report', 'moderation:realname'],
   },
   {
     id: 3,
@@ -818,8 +820,24 @@ export const REVIEW_TASKS: ReviewTask[] = Array.from({ length: 8 }, (_, i) => {
   } satisfies ReviewTask;
 });
 
-export const REPORT_TASKS: ReportTask[] = Array.from({ length: 8 }, (_, i) => {
-  const r = mulberry32(7001 + i * 977);
+/** 实名认证待审队列（mock）：姓名与证件号按真实口径掩码展示 */
+export const REAL_NAME_TASKS: RealNameTask[] = Array.from({ length: 4 }, (_, i) => {
+  const user = SEED_USERS[(i + 2) % SEED_USERS.length];
+  return {
+    userId: user.id,
+    username: user.username,
+    nickname: user.nickname,
+    avatar: avatarUrl(user.id, user.nickname),
+    phone: `138****${String(1000 + i).slice(-4)}`,
+    realName: ['王小明', '李静', '赵铁柱', '陈晓'][i % 4],
+    idCardMasked: `110101********${String(1234 + i).slice(-4)}`,
+    status: i === 3 ? 'REJECTED' : 'PENDING',
+    submittedAt: new Date(Date.now() - (i + 1) * 3600_000).toISOString(),
+    certifiedAt: i === 3 ? new Date(Date.now() - 1800_000).toISOString() : null,
+  };
+});
+
+export const REPORT_TASKS: ReportTask[] = Array.from({ length: 8 }, (_, i) => {  const r = mulberry32(7001 + i * 977);
   const video = VIDEO_STORE[(i * 5) % VIDEO_STORE.length].detail;
   const targetType = pick(['VIDEO', 'COMMENT', 'FEED', 'USER'] as const);
   return {

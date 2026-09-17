@@ -13,7 +13,7 @@ import java.util.Set;
 public final class PermissionSets {
     private static final List<String> BASE = List.of("video:upload", "video:manage_own");
     private static final List<String> CREATOR = List.of("video:download", "creator:dashboard");
-    private static final List<String> MODERATOR = List.of("moderation:review", "moderation:report");
+    private static final List<String> MODERATOR = List.of("moderation:review", "moderation:report", "moderation:realname");
     private static final List<String> ADMIN = List.of("admin:user_manage", "admin:role_assign", "admin:system_config", "admin:analytics");
 
     private static final Set<Role> MODERATION_ROLES = Set.of(Role.MODERATOR, Role.ADMIN);

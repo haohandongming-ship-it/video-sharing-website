@@ -4,7 +4,7 @@
  */
 import { useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { BadgeCheck, CalendarDays, Settings2, UserRoundX } from 'lucide-react';
+import { BadgeCheck, CalendarDays, MessageSquare, Settings2, UserRoundX } from 'lucide-react';
 import { ApiError } from '@/api/client';
 import type { FollowUser } from '@/api/types';
 import {
@@ -27,6 +27,7 @@ import { FeedCard } from '@/components/feed/FeedCard';
 import { SubscribeButton } from '@/components/user/SubscribeButton';
 import {
   useFollowList,
+  useOpenConversation,
   useToggleFollow,
   useUserFavorites,
   useUserFeeds,
@@ -35,6 +36,7 @@ import {
 } from '@/hooks/useApi';
 import { formatCount, formatDate } from '@/lib/format';
 import { useAuthStore } from '@/stores/authStore';
+import { useUiStore } from '@/stores/uiStore';
 
 const TAB_KEYS = ['videos', 'feeds', 'favorites', 'following', 'followers'] as const;
 type ProfileTab = (typeof TAB_KEYS)[number];
@@ -58,6 +60,7 @@ export default function UserProfilePage() {
   const profileQuery = useUserProfile(userId);
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
   const follow = useToggleFollow();
+  const openConversation = useOpenConversation();
 
   const rawTab = searchParams.get('tab');
   const tab: ProfileTab = (TAB_KEYS as readonly string[]).includes(rawTab ?? '')
@@ -180,12 +183,40 @@ export default function UserProfilePage() {
               </Button>
             </>
           ) : (
-            <SubscribeButton
-              active={profile.followed}
-              mutual={profile.mutual}
-              loading={follow.isPending}
-              onToggle={(next) => follow.mutate({ userId: profile.id, active: next })}
-            />
+            <>
+              <SubscribeButton
+                active={profile.followed}
+                mutual={profile.mutual}
+                loading={follow.isPending}
+                onToggle={(next) => follow.mutate({ userId: profile.id, active: next })}
+              />
+              {/*
+                发私信：先让后端找到或创建会话，再带着会话 id 跳到私信页；
+                私信页用 ?c= 定位会话，这样消息会出现在对应会话里而不是落在默认会话。
+              */}
+              <Button
+                variant="outline"
+                icon={<MessageSquare className="size-4" aria-hidden />}
+                disabled={openConversation.isPending}
+                onClick={() => {
+                  if (currentUserId === null) {
+                    useUiStore.getState().toast({ title: '登录后即可发私信', tone: 'warning' });
+                    return;
+                  }
+                  openConversation.mutate(profile.id, {
+                    onSuccess: (conversation) => navigate(`/messages?c=${conversation.id}`),
+                    onError: (error) =>
+                      useUiStore.getState().toast({
+                        title: '无法打开私信',
+                        description: error instanceof Error ? error.message : '请稍后重试',
+                        tone: 'error',
+                      }),
+                  });
+                }}
+              >
+                发私信
+              </Button>
+            </>
           )}
         </div>
       </div>

@@ -12,7 +12,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-@Component @Profile("dev") @org.springframework.core.annotation.Order(0)
+@Component @Profile({"dev","dev-infra"}) @org.springframework.core.annotation.Order(0)
 public class DevDataSeeder implements ApplicationRunner {
     private final UserRepository users;private final PasswordEncoder encoder;private final JdbcTemplate jdbc;
     public DevDataSeeder(UserRepository users,PasswordEncoder encoder,JdbcTemplate jdbc){this.users=users;this.encoder=encoder;this.jdbc=jdbc;}
@@ -28,7 +28,7 @@ public class DevDataSeeder implements ApplicationRunner {
             jdbc.update("INSERT INTO files(sha256,file_size,bucket,object_key,mime_type,ref_count,status) VALUES(?,?,?,?,?,?,?)",sha,20_000_000L+i,"videos","demo/"+i+".mp4","video/mp4",1,"ACTIVE");
             Long fileId=jdbc.queryForObject("SELECT id FROM files WHERE sha256=?",Long.class,sha);
             long author=i%4==0?moderator:creator;String type=i%4==0?"SHORT":"LONG";String status=i==3?"REVIEWING":i==4?"REJECTED":"PUBLISHED";
-            jdbc.update("INSERT INTO videos(user_id,source_file_id,title,description,cover_url,hls_url,duration,file_size,video_type,category_id,visibility,status,download_enabled,view_count,like_count,comment_count,favorite_count,published_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",author,fileId,"光影视频示例 "+i,"用于前后端联调的示例视频内容。","https://picsum.photos/seed/video"+i+"/640/360","/demo/hls/master.m3u8",i%5==0?45:300+i*37,20_000_000L+i,type,(i%3)+1,"PUBLIC",status,true,0L,0L,0L,0L,Timestamp.from(Instant.now().minus(Duration.ofDays(i))),Timestamp.from(Instant.now().minus(Duration.ofDays(i))),Timestamp.from(Instant.now()));
+            jdbc.update("INSERT INTO videos(user_id,source_file_id,title,description,cover_url,hls_url,duration,file_size,video_type,category_id,visibility,status,download_enabled,view_count,like_count,comment_count,favorite_count,published_at,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",author,fileId,"光影视频示例 "+i,"用于前后端联调的示例视频内容。","https://picsum.photos/seed/video"+i+"/640/360","/api/v1/demo/hls/master.m3u8",i%5==0?45:300+i*37,20_000_000L+i,type,(i%3)+1,"PUBLIC",status,true,0L,0L,0L,0L,Timestamp.from(Instant.now().minus(Duration.ofDays(i))),Timestamp.from(Instant.now().minus(Duration.ofDays(i))),Timestamp.from(Instant.now()));
         }
         var videoIds=jdbc.query("SELECT id FROM videos ORDER BY id",(rs,n)->rs.getLong(1));
         jdbc.update("INSERT INTO follows(follower_id,followee_id) VALUES(?,?)",newbie,creator);

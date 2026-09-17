@@ -55,9 +55,13 @@ public class AdminService {
     private final VideoCatalog catalog;
     private final ViewFactory views;
     private final ObjectMapper json;
+    private final com.videoshare.auth.SensitiveDataCipher cipher;
+    private final com.videoshare.realtime.RealtimeNotifier notifier;
 
     public AdminService(JdbcTemplate jdbc, NamedParameterJdbcTemplate named, UserRepository users,
-                        VideoRepository videos, VideoCatalog catalog, ViewFactory views, ObjectMapper json) {
+                        VideoRepository videos, VideoCatalog catalog, ViewFactory views, ObjectMapper json,
+                        com.videoshare.auth.SensitiveDataCipher cipher,
+                        com.videoshare.realtime.RealtimeNotifier notifier) {
         this.jdbc = jdbc;
         this.named = named;
         this.users = users;
@@ -65,6 +69,8 @@ public class AdminService {
         this.catalog = catalog;
         this.views = views;
         this.json = json;
+        this.cipher = cipher;
+        this.notifier = notifier;
     }
 
     // ------------------------------------------------------------------ 概览
@@ -140,12 +146,18 @@ public class AdminService {
 
     public PageResult<Map<String, Object>> reviews(String status, String risk, int page, int size) {
         Map<String, Object> params = new HashMap<>();
-        StringBuilder where = new StringBuilder(" WHERE 1=1");
+        /*
+         * INNER JOIN videos：审核任务必须依附于一个真实存在的视频。
+         * 只查 video_reviews 会带出「视频已被删除但任务行还在」的孤儿记录，
+         * renderVideos 对此返回 null，前端读 task.video.title 时直接抛
+         * "Cannot read properties of null"，整个管理后台白屏。
+         */
+        StringBuilder where = new StringBuilder(" WHERE v.status <> 'DELETED'");
         appendFilter(where, params, "r.status", "status", status);
         appendFilter(where, params, "r.risk_level", "risk", risk);
         int normalizedPage = Math.max(1, page);
         int normalizedSize = Math.clamp(size, 1, PageResult.MAX_PAGE_SIZE);
-        long total = count("SELECT COUNT(*) FROM video_reviews r" + where, params);
+        long total = count("SELECT COUNT(*) FROM video_reviews r JOIN videos v ON v.id = r.video_id" + where, params);
         if (total == 0) return PageResult.empty(normalizedPage, normalizedSize);
         Map<String, Object> pageParams = new HashMap<>(params);
         pageParams.put("limit", normalizedSize);
@@ -154,7 +166,7 @@ public class AdminService {
                 SELECT r.id, r.video_id, r.machine_result, r.risk_level, r.status,
                        r.reviewer_id, r.review_note, r.submitted_at,
                        (SELECT COUNT(*) FROM reports rp WHERE rp.target_type='VIDEO' AND rp.target_id=r.video_id) AS report_count
-                FROM video_reviews r%s
+                FROM video_reviews r JOIN videos v ON v.id = r.video_id%s
                 ORDER BY r.submitted_at DESC, r.id DESC LIMIT :limit OFFSET :offset""".formatted(where),
                 pageParams, (rs, row) -> new ReviewRow(rs.getLong("id"), rs.getLong("video_id"),
                         rs.getString("machine_result"), rs.getString("risk_level"), rs.getString("status"),
@@ -394,6 +406,91 @@ public class AdminService {
         m.put("recommend", Map.of("personalizationEnabled", true, "hotFallback", true));
         m.put("minor", Map.of("teenagerModeEnabled", true, "dailyLimitMinutes", 40, "nightBlockStart", "22:00", "nightBlockEnd", "06:00"));
         return m;
+    }
+
+    // ------------------------------------------------------------------ 实名认证审核
+
+    /**
+     * 实名认证待审队列。
+     *
+     * <p>队列与处置方法此前完全缺失——用户提交后 {@code auth_status} 会变成 PENDING，
+     * 但没有任何审核入口，申请只能永久停在那里。同时证件号原本只存 SHA-256 哈希（不可逆），
+     * 审核员无从核对，因此 V10 迁移补上了证件号密文。
+     *
+     * <p>隐私：接口只返回掩码后的证件号（前 6 后 4），姓名按需解密；单条数据损坏不影响整队。
+     */
+    public PageResult<Map<String, Object>> realNames(String status, int page, int size) {
+        Map<String, Object> params = new HashMap<>();
+        String filter = status == null || status.isBlank() ? "PENDING" : status.toUpperCase(java.util.Locale.ROOT);
+        params.put("status", filter);
+        int normalizedPage = Math.max(1, page);
+        int normalizedSize = Math.clamp(size, 1, PageResult.MAX_PAGE_SIZE);
+        long total = count("SELECT COUNT(*) FROM creator_profiles cp WHERE cp.auth_status=:status", params);
+        if (total == 0) return PageResult.empty(normalizedPage, normalizedSize);
+        Map<String, Object> pageParams = new HashMap<>(params);
+        pageParams.put("limit", normalizedSize);
+        pageParams.put("offset", (long) (normalizedPage - 1) * normalizedSize);
+        List<Map<String, Object>> items = named.query("""
+                SELECT cp.user_id,cp.real_name_encrypted,cp.id_card_encrypted,cp.auth_status,cp.submitted_at,cp.certified_at,
+                       u.username,u.nickname,u.avatar_url,u.phone
+                FROM creator_profiles cp JOIN users u ON u.id=cp.user_id
+                WHERE cp.auth_status=:status
+                ORDER BY cp.submitted_at ASC, cp.user_id ASC LIMIT :limit OFFSET :offset""",
+                pageParams, (rs, row) -> {
+                    Map<String, Object> m = new LinkedHashMap<>();
+                    m.put("userId", rs.getLong("user_id"));
+                    m.put("username", rs.getString("username"));
+                    m.put("nickname", rs.getString("nickname"));
+                    m.put("avatar", rs.getString("avatar_url"));
+                    m.put("phone", rs.getString("phone"));
+                    m.put("realName", safeDecrypt(rs.getString("real_name_encrypted")));
+                    m.put("idCardMasked", maskIdCard(safeDecrypt(rs.getString("id_card_encrypted"))));
+                    m.put("status", rs.getString("auth_status"));
+                    m.put("submittedAt", instant(rs, "submitted_at"));
+                    m.put("certifiedAt", instant(rs, "certified_at"));
+                    return m;
+                });
+        return PageResult.of(items, total, normalizedPage, normalizedSize);
+    }
+
+    /** 通过 / 驳回实名申请。通过后写入 certified_at 并授予创作者认证标识。 */
+    @Transactional
+    public Map<String, Object> decideRealName(long operator, long userId, String decision, String note) {
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT auth_status FROM creator_profiles WHERE user_id=?", userId);
+        if (rows.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "该用户没有实名认证申请");
+        String current = String.valueOf(rows.getFirst().get("auth_status"));
+        if (!"PENDING".equals(current)) throw new ApiException(ErrorCode.CONFLICT, "该申请已处理，请刷新列表");
+
+        boolean approve = "APPROVE".equals(decision);
+        String status = approve ? "CERTIFIED" : "REJECTED";
+        // 通过时给一个基础信任分，与种子数据中的已认证账号保持一致
+        jdbc.update("""
+                UPDATE creator_profiles SET auth_status=?,certified_at=?,trust_score=CASE WHEN ? THEN GREATEST(trust_score,80) ELSE trust_score END
+                WHERE user_id=?""", status, approve ? Timestamp.from(Instant.now()) : null, approve, userId);
+        audit(operator, "REAL_NAME_" + (approve ? "APPROVE" : "REJECT"), "USER", userId,
+                Map.of("note", Objects.toString(note, "")));
+        notifier.notify(userId, operator, "REVIEW", approve ? "实名认证已通过" : "实名认证未通过",
+                approve ? "你的实名认证已通过，账号已获得认证标识。" : "实名认证未通过：" + Objects.toString(note, "资料不清晰"),
+                "USER", userId);
+        return Map.of("success", true, "status", status);
+    }
+
+    /** 解密失败不应让整个队列 500：返回占位提示，运维可据此定位脏数据。 */
+    private String safeDecrypt(String encrypted) {
+        if (encrypted == null || encrypted.isBlank()) return null;
+        try {
+            return cipher.decrypt(encrypted);
+        } catch (RuntimeException ex) {
+            return "（无法解密）";
+        }
+    }
+
+    /** 身份证号掩码：保留前 6 位与后 4 位，中间以 * 代替。 */
+    private static String maskIdCard(String idCard) {
+        if (idCard == null || idCard.isBlank()) return null;
+        if (idCard.length() <= 10) return idCard.charAt(0) + "*".repeat(Math.max(0, idCard.length() - 2)) + idCard.charAt(idCard.length() - 1);
+        return idCard.substring(0, 6) + "*".repeat(idCard.length() - 10) + idCard.substring(idCard.length() - 4);
     }
 
     private void audit(long operator, String action, String type, long target, Map<String, Object> detail) {

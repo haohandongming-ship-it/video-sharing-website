@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { Avatar, Badge, Button, Divider, Input, RadioGroup, SectionHeader, SurfaceCard, Switch, Tabs, Textarea } from '@/components/ui';
 import { authApi } from '@/api/auth';
-import { RATE_OPTIONS } from '@/lib/constants';
+import { QUALITY_TIERS, RATE_OPTIONS } from '@/lib/constants';
 import { formatDate, maskPhone } from '@/lib/format';
 import { useAuthStore } from '@/stores/authStore';
 import { usePlayerStore } from '@/stores/playerStore';
@@ -46,12 +46,12 @@ const SECTIONS: Section[] = [
   { key: 'deactivate', label: '账号注销', title: '账号注销', description: '注销申请提交后进入 7 天冷静期，期间可随时撤销。' },
 ];
 
-const QUALITY_OPTIONS: { value: Quality | 'auto'; label: string; description: string }[] = [
-  { value: 'auto', label: '自动', description: '按网络状况自动切换清晰度' },
-  { value: '1080p', label: '1080P', description: '画质优先，流量消耗较高' },
-  { value: '720p', label: '720P', description: '画质与流量平衡' },
-  { value: '480p', label: '480P', description: '流量优先，网络较差时更流畅' },
-];
+/** 与播放器菜单共用同一份梯度定义，避免两处漂移 */
+const QUALITY_OPTIONS = QUALITY_TIERS.map((tier) => ({
+  value: tier.value ?? 'auto',
+  label: tier.label,
+  description: tier.description,
+}));
 
 const RATE_RADIOS = RATE_OPTIONS.map((rate) => ({ value: String(rate), label: `${rate}×` }));
 const THEME_RADIOS = [
@@ -220,24 +220,21 @@ export default function SettingsPage() {
     }
   };
 
+  /** 与后端 AvatarService.MAX_BYTES 保持一致：图片走对象存储，只把 URL 存进数据库。 */
+  const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+
   const changeAvatar = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      toast('头像格式不支持', '请选择 JPG 或 PNG 图片', 'warning');
+      toast('头像格式不支持', '请选择 JPG、PNG 或 GIF 图片', 'warning');
       return;
     }
-    if (file.size > 2 * 1024 * 1024) {
+    if (file.size > AVATAR_MAX_BYTES) {
       toast('头像过大', '请选择 2MB 以内的图片', 'warning');
       return;
     }
     setUploadingAvatar(true);
     try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result));
-        reader.onerror = () => reject(new Error('读取图片失败'));
-        reader.readAsDataURL(file);
-      });
-      const updated = await authApi.updateProfile({ avatar: dataUrl });
+      const updated = await authApi.uploadAvatar(file);
       patchUser({ avatar: updated.avatar });
       toast('头像已更新', undefined, 'success');
     } catch (error) {
@@ -246,7 +243,6 @@ export default function SettingsPage() {
       setUploadingAvatar(false);
     }
   };
-
   const changePassword = async () => {
     const next: Record<string, string> = {};
     if (oldPassword.length < 6) next.oldPassword = '请输入原密码';
@@ -375,12 +371,12 @@ export default function SettingsPage() {
               <Avatar src={user.avatar} name={user.nickname} size="xl" certified={user.certified} />
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-fg">头像</p>
-                <p className="mt-0.5 text-xs text-fg-muted">支持 JPG、PNG，2MB 以内，建议使用正方形图片。</p>
+                <p className="mt-0.5 text-xs text-fg-muted">支持 JPG、PNG、GIF，2MB 以内，建议使用正方形图片。</p>
               </div>
               <input
                 ref={avatarInputRef}
                 type="file"
-                accept="image/png,image/jpeg"
+                accept="image/png,image/jpeg,image/gif"
                 className="sr-only"
                 aria-label="选择头像文件"
                 onChange={(event) => {
@@ -645,7 +641,8 @@ export default function SettingsPage() {
                   value={quality ?? 'auto'}
                   options={QUALITY_OPTIONS}
                   onChange={(value) => {
-                    setQuality(value === 'auto' ? '1080p' : value);
+                    // 'auto' 必须落成 null：此前把它存成 '1080p'，等于「自动」和「固定 1080P」无法区分
+                    setQuality(value === 'auto' ? null : (value as Quality));
                     toast('默认清晰度已更新', value === 'auto' ? '自动：按网络状况切换清晰度' : `固定为 ${value.toUpperCase()}`);
                   }}
                 />

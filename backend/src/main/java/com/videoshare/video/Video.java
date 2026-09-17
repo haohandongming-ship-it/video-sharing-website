@@ -42,5 +42,7 @@ public class Video {
     public void initialize(long userId,long sourceFileId,String title,String description,long categoryId,VideoType type,Visibility visibility,long fileSize){initialize(userId,sourceFileId,title,description,categoryId,type,visibility,fileSize,0);}
     public void initialize(long userId,long sourceFileId,String title,String description,long categoryId,VideoType type,Visibility visibility,long fileSize,int duration){this.userId=userId;this.sourceFileId=sourceFileId;this.title=title;this.description=description;this.categoryId=categoryId;this.videoType=type;this.visibility=visibility;this.fileSize=fileSize;this.duration=Math.max(0,duration);this.status=VideoStatus.PROCESSING;this.createdAt=Instant.now();this.updatedAt=createdAt;}
     public void transcodeComplete(String hlsUrl,String coverUrl,int duration){this.hlsUrl=hlsUrl;this.coverUrl=coverUrl;this.duration=duration;this.status=VideoStatus.REVIEWING;this.updatedAt=Instant.now();}
+    /** 仅替换封面，不改动状态与时长（事后更换封面或为历史视频补图）。 */
+    public void changeCover(String coverUrl){this.coverUrl=coverUrl;this.updatedAt=Instant.now();}
     public void review(boolean approved,String note){this.status=approved?VideoStatus.PUBLISHED:VideoStatus.REJECTED;this.reviewNote=note;this.publishedAt=approved?Instant.now():null;this.updatedAt=Instant.now();}
 }

@@ -16,6 +16,8 @@ export const queryKeys = {
     related: (id: number) => ['videos', 'related', id] as const,
     ranking: (query: RankingQuery) => ['videos', 'ranking', query] as const,
     search: (query: SearchQuery) => ['videos', 'search', query] as const,
+    danmaku: (videoId: number) => ['videos', videoId, 'danmaku'] as const,
+    subtitles: (videoId: number) => ['videos', videoId, 'subtitles'] as const,
     shorts: (cursor?: string | null) => ['videos', 'shorts', { cursor: cursor ?? null }] as const,
     history: (page: number) => ['videos', 'history', { page }] as const,
     favorites: (query: { page?: number; folderId?: number } = {}) => ['videos', 'favorites', query] as const,
@@ -44,6 +46,7 @@ export const queryKeys = {
     followers: (id: number, page = 1) => ['user', id, 'followers', { page }] as const,
     following: (id: number, page = 1) => ['user', id, 'following', { page }] as const,
     suggested: ['user', 'suggested'] as const,
+    search: (query: { q: string; page?: number }) => ['user', 'search', query] as const,
   },
 
   creator: {
@@ -65,6 +68,7 @@ export const queryKeys = {
     overview: ['admin', 'overview'] as const,
     reviews: (query: Record<string, unknown>) => ['admin', 'reviews', query] as const,
     reports: (query: Record<string, unknown>) => ['admin', 'reports', query] as const,
+    realNames: (query: Record<string, unknown>) => ['admin', 'real-names', query] as const,
     users: (query: Record<string, unknown>) => ['admin', 'users', query] as const,
     videos: (query: Record<string, unknown>) => ['admin', 'videos', query] as const,
     auditLogs: (query: Record<string, unknown>) => ['admin', 'audit-logs', query] as const,

@@ -30,12 +30,14 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 @RestController
@@ -45,18 +47,67 @@ public class VideoController {
     private static final Pattern RANGE = Pattern.compile("bytes=(\\d*)-(\\d*)");
 
     private final VideoService service;
+    private final VideoCoverService coverService;
+    private final DanmakuService danmaku;
     private final FileAssetRepository files;
     private final StorageGateway storage;
 
-    public VideoController(VideoService service, FileAssetRepository files, StorageGateway storage) {
+    public VideoController(VideoService service, VideoCoverService coverService, DanmakuService danmaku,
+                           FileAssetRepository files, StorageGateway storage) {
         this.service = service;
+        this.coverService = coverService;
+        this.danmaku = danmaku;
         this.files = files;
         this.storage = storage;
+    }
+
+    /** 弹幕时间线：未登录也可看（与播放一致）。 */
+    @GetMapping("/{id}/danmaku")
+    public ApiResponse<List<Map<String, Object>>> danmakuTimeline(@PathVariable long id,
+                                                                  @AuthenticationPrincipal CurrentUser current) {
+        return ApiResponse.ok(danmaku.timeline(id, current));
+    }
+
+    /** 发送弹幕：需要登录，可带时间点、颜色与位置。 */
+    @PostMapping("/{id}/danmaku")
+    public ApiResponse<Map<String, Object>> sendDanmaku(@PathVariable long id,
+                                                        @AuthenticationPrincipal CurrentUser current,
+                                                        @RequestHeader(name = "Idempotency-Key", required = false) String key,
+                                                        @RequestBody Map<String, Object> body) {
+        return ApiResponse.ok(danmaku.send(id, current, body));
+    }
+
+    /**
+     * 字幕轨道列表。
+     *
+     * <p>{@code subtitles} 表同样在 V4 就建好了却没有服务端实现。目前上传链路不会产出字幕文件，
+     * 因此这里多半返回空数组——前端据此显示「暂无字幕」，而不是给一个点了没反应的开关。
+     */
+    @GetMapping("/{id}/subtitles")
+    public ApiResponse<List<Map<String, Object>>> subtitles(@PathVariable long id,
+                                                            @AuthenticationPrincipal CurrentUser current) {
+        service.playable(id, current);
+        List<Map<String, Object>> items = new java.util.ArrayList<>();
+        for (Map<String, Object> row : service.subtitleRows(id)) {
+            Map<String, Object> m = new LinkedHashMap<>(row);
+            Object objectKey = row.get("objectKey");
+            if (objectKey != null) m.put("url", storage.publicUrl(String.valueOf(objectKey)));
+            items.add(m);
+        }
+        return ApiResponse.ok(items);
     }
 
     @GetMapping("/{id}")
     public ApiResponse<Map<String, Object>> detail(@PathVariable long id, @AuthenticationPrincipal CurrentUser current) {
         return ApiResponse.ok(service.detail(id, current));
+    }
+
+    /** 更换/补传封面：作者本人或管理员、审核员可用。 */
+    @PostMapping("/{id}/cover")
+    public ApiResponse<Map<String, String>> updateCover(@PathVariable long id,
+                                                        @AuthenticationPrincipal CurrentUser current,
+                                                        @RequestParam("file") MultipartFile file) {
+        return ApiResponse.ok(Map.of("coverUrl", coverService.update(id, current, file)));
     }
 
     /**

@@ -17,10 +17,12 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { formatDuration } from '@/lib/format';
-import { KEYBOARD_SHORTCUTS, RATE_OPTIONS } from '@/lib/constants';
+import { PlayerControlBar } from './PlayerControlBar';
+import { KEYBOARD_SHORTCUTS, QUALITY_TIERS, RATE_OPTIONS } from '@/lib/constants';
 import { Dropdown, IconButton, Tooltip } from '@/components/ui';
 import { useHlsPlayer } from './useHlsPlayer';
 import { useUiStore } from '@/stores/uiStore';
+import { usePlayerStore } from '@/stores/playerStore';
 
 export interface VideoPlayerProps {
   src?: string | null;
@@ -77,6 +79,9 @@ export function VideoPlayer({
   const setStoreVolume = useUiStore((s) => s.setVolume);
   const setStoreMuted = useUiStore((s) => s.setMuted);
   const setStoreRate = useUiStore((s) => s.setPlaybackRate);
+  /** 清晰度偏好与设置页「默认清晰度」共用 playerStore.quality，null = 自动 */
+  const storeQuality = usePlayerStore((s) => s.quality);
+  const setStoreQuality = usePlayerStore((s) => s.setQuality);
 
   const player = useHlsPlayer({
     src,
@@ -239,7 +244,9 @@ export function VideoPlayer({
   };
 
   const VolumeIcon = storeMuted || storeVolume === 0 ? VolumeX : storeVolume < 0.5 ? Volume1 : Volume2;
+  /** 触发按钮显示当前实际生效的梯度：自动档显示 ABR 选中的那一层，固定档显示该层名称。 */
   const qualityLabel = currentLevel === -1 ? '自动' : (levels[currentLevel]?.name ?? '自动');
+  const qualityTriggerLabel = storeQuality ? (QUALITY_TIERS.find((t) => t.value === storeQuality)?.label ?? qualityLabel) : qualityLabel;
 
   return (
     <div
@@ -406,6 +413,7 @@ export function VideoPlayer({
           <div className="ml-auto flex items-center gap-0.5">
             <Dropdown
               align="end"
+              side="top"
               items={RATE_OPTIONS.map((rate) => ({
                 key: String(rate),
                 label: rate === 1 ? '正常速度' : `${rate}x`,
@@ -436,14 +444,31 @@ export function VideoPlayer({
 
             <Dropdown
               align="end"
-              items={[
-                { key: 'auto', label: levels.length ? `自动（当前 ${qualityLabel}）` : '原始文件', onSelect: () => player.setLevel(-1) },
-                ...levels.map((level) => ({
-                  key: String(level.index),
-                  label: level.name,
-                  onSelect: () => player.setLevel(level.index),
-                })),
-              ]}
+              side="top"
+              items={QUALITY_TIERS.map((tier) => {
+                const target = player.levelForQuality(tier.value);
+                // 固定梯度在本视频清单里不一定存在时，说明会退到哪一档，避免用户以为设置没生效
+                const actual = tier.value && levels.length > 0 && target >= 0 ? levels[target]?.name : null;
+                const description =
+                  tier.value && levels.length > 0 && actual && actual !== tier.label.toLowerCase()
+                    ? `${tier.description}（本视频最高 ${actual}）`
+                    : tier.description;
+                return {
+                  key: tier.value ?? 'auto',
+                  label: tier.label,
+                  description,
+                  selected: (storeQuality ?? null) === tier.value,
+                  onSelect: () => {
+                    setStoreQuality(tier.value);
+                    player.setLevel(target);
+                    flashHint(
+                      tier.value
+                        ? `清晰度 ${tier.label}${actual && actual !== tier.label.toLowerCase() ? `（本视频为 ${actual}）` : ''}`
+                        : '清晰度自动',
+                    );
+                  },
+                };
+              })}
               trigger={({ toggle }) => (
                 <Tooltip content="清晰度">
                   <IconButton
@@ -458,7 +483,7 @@ export function VideoPlayer({
                   >
                     <span className="inline-flex items-center gap-1 text-[11px] font-semibold">
                       <Settings2 className="size-3.5" />
-                      {qualityOpen ? '' : qualityLabel}
+                      {qualityOpen ? '' : qualityTriggerLabel}
                     </span>
                   </IconButton>
                 </Tooltip>
@@ -532,7 +557,21 @@ export function ShortVideoPlayer({
   className,
   muted,
   onToggleMute,
+  onTogglePlay,
   playbackRate = 1,
+  onTimeUpdate,
+  onLevels,
+  showControls = false,
+  levels = [],
+  quality = null,
+  onQualityChange,
+  onRateChange,
+  onVolumeChange,
+  hasSubtitles = false,
+  subtitlesOn = false,
+  onToggleSubtitles,
+  danmakuSlot,
+  onHint,
 }: {
   src?: string | null;
   poster?: string;
@@ -541,10 +580,47 @@ export function ShortVideoPlayer({
   className?: string;
   muted: boolean;
   onToggleMute: () => void;
+  /** 单击视频时的行为（短视频为播放/暂停，与长视频一致） */
+  onTogglePlay?: () => void;
   playbackRate?: number;
+  /** 播放进度回调（秒），短视频弹幕层需要据此投放弹幕 */
+  onTimeUpdate?: (time: number, duration: number) => void;
+  /** HLS 清晰度清单回调，短视频底部控制栏据此提供清晰度切换 */
+  onLevels?: (levels: { index: number; name: string; height: number }[], current: number, setLevel: (index: number) => void) => void;
+  /** 是否叠加控制栏（与长视频同一套图标与交互） */
+  showControls?: boolean;
+  levels?: { index: number; name: string; height: number }[];
+  quality?: string | null;
+  onQualityChange?: (tier: string | null, levelIndex: number) => void;
+  onRateChange?: (rate: number) => void;
+  onVolumeChange?: (volume: number) => void;
+  hasSubtitles?: boolean;
+  subtitlesOn?: boolean;
+  onToggleSubtitles?: () => void;
+  danmakuSlot?: React.ReactNode;
+  onHint?: (text: string) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<HlsType | null>(null);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const [duration, setDuration] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [bufferedPercent, setBufferedPercent] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  const volume = useUiStore((s) => s.volume);
+  const setStoreVolume = useUiStore((s) => s.setVolume);
+  const setStoreMuted = useUiStore((s) => s.setMuted);
+  /*
+   * 回调同步进 ref：父组件传的多是内联函数，每次渲染都会变。
+   * 若直接写进 hls 初始化 effect 的依赖，会导致实例被反复销毁重建（视频从头加载）。
+   * 因此只在 effect 里更新 ref，不放进依赖数组。
+   */
+  const timeUpdateRef = useRef(onTimeUpdate);
+  const levelsRef = useRef(onLevels);
+  useEffect(() => {
+    timeUpdateRef.current = onTimeUpdate;
+    levelsRef.current = onLevels;
+  });
 
   useEffect(() => {
     const video = videoRef.current;
@@ -567,6 +643,19 @@ export function ShortVideoPlayer({
       if (HlsCtor.isSupported()) {
         const hls = new HlsCtor({ enableWorker: true, capLevelToPlayerSize: true });
         hlsRef.current = hls;
+        hls.on(HlsCtor.Events.MANIFEST_PARSED, (_event, data) => {
+          levelsRef.current?.(
+            data.levels.map((level, index) => ({
+              index,
+              height: level.height || 0,
+              name: level.height ? `${level.height}p` : `${Math.round(level.bitrate / 1000)}kbps`,
+            })),
+            hls.currentLevel,
+            (index: number) => {
+              hls.currentLevel = index;
+            },
+          );
+        });
         hls.loadSource(source);
         hls.attachMedia(video);
       } else {
@@ -599,24 +688,142 @@ export function ShortVideoPlayer({
     else video.pause();
   }, [playing]);
 
+  /* 进度 / 缓冲：控制栏进度条与时间显示需要 */
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const sync = () => {
+      setDuration(video.duration || 0);
+      setCurrentTime(video.currentTime || 0);
+      const buffered = video.buffered;
+      setBufferedPercent(
+        buffered.length > 0 && video.duration > 0
+          ? Math.min(100, (buffered.end(buffered.length - 1) / video.duration) * 100)
+          : 0,
+      );
+    };
+    const onProgress = () => sync();
+    video.addEventListener('loadedmetadata', sync);
+    video.addEventListener('durationchange', sync);
+    video.addEventListener('progress', onProgress);
+    return () => {
+      video.removeEventListener('loadedmetadata', sync);
+      video.removeEventListener('durationchange', sync);
+      video.removeEventListener('progress', onProgress);
+    };
+  }, [src]);
+
+  /* 全屏：容器需要 position:relative，全屏状态下由容器承载 UI */
+  useEffect(() => {
+    const onChange = () => setFullscreen(document.fullscreenElement === wrapperRef.current);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await wrapperRef.current?.requestFullscreen();
+    } catch {
+      /* 用户手势缺失或被策略拒绝时忽略 */
+    }
+  }, []);
+
+  const togglePip = useCallback(async () => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture();
+      else await video.requestPictureInPicture();
+    } catch {
+      /* 不支持画中画时忽略 */
+    }
+  }, []);
+
   return (
-    <>
+    <div ref={wrapperRef} className="relative size-full">
       <video
         ref={videoRef}
         poster={poster}
         playsInline
         loop
         preload="metadata"
-        onClick={onToggleMute}
+        onClick={() => {
+          // 单击播放/暂停（与长视频一致）；此前是切换静音，与直觉不符。
+          // 用户正在选中文字时不打断。
+          if (window.getSelection()?.toString()) return;
+          onTogglePlay?.();
+        }}
         onEnded={onEnded}
+        onTimeUpdate={(event) => {
+          timeUpdateRef.current?.(event.currentTarget.currentTime, event.currentTarget.duration || 0);
+          setCurrentTime(event.currentTarget.currentTime || 0);
+        }}
         className={cn('size-full bg-black object-contain', className)}
-      />
+      >
+        {/* 字幕靠条件渲染控制：关闭时不渲染 track，无需再改 textTracks 的 mode */}
+        {subtitlesOn && hasSubtitles && <track kind="captions" label="字幕" default />}
+      </video>
       {/* 没有源文件时不能只留一块黑屏：长视频页有对应文案，短视频页补上同款提示。 */}
       {!src && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center px-6 text-center text-sm text-white/80">
           视频尚未提供可播放的源文件
         </div>
       )}
-    </>
+      {showControls && (
+        <div
+          /*
+           * relative + z-70：控制栏必须是这个堆叠上下文里最高的一层，
+           * 否则页面级的弹幕层（同为 z-70、且在 DOM 中更靠后）会盖住栏内的
+           * 倍速/清晰度菜单。菜单自身在 Overlay 里是 z-70，靠这里的上下文层级取胜，
+           * 不必把它调到 z-90（那会盖过顶栏与弹窗）。
+           *
+           * 弹幕输入浮层（DanmakuButton）作为控制栏的子节点渲染，因此自动位于控制栏之上。
+           */
+          className="absolute inset-x-0 bottom-0 z-70 bg-gradient-to-t from-black/85 via-black/45 to-transparent px-3 pt-8 pb-2.5"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <PlayerControlBar
+            playing={playing}
+            currentTime={currentTime}
+            duration={duration}
+            bufferedPercent={bufferedPercent}
+            muted={muted}
+            volume={volume}
+            onTogglePlay={() => {
+              const video = videoRef.current;
+              if (video) {
+                if (video.paused) void video.play().catch(() => undefined);
+                else video.pause();
+              }
+              onTogglePlay?.();
+            }}
+            onToggleMute={onToggleMute}
+            onVolumeChange={(next) => {
+              setStoreVolume(next);
+              setStoreMuted(next === 0);
+              onVolumeChange?.(next);
+            }}
+            onSeek={(time: number) => {
+              const video = videoRef.current;
+              if (video) video.currentTime = time;
+            }}
+            rate={playbackRate}
+            onRateChange={(next) => onRateChange?.(next)}
+            levels={levels}
+            quality={quality}
+            onQualityChange={(tier, levelIndex) => onQualityChange?.(tier, levelIndex)}
+            hasSubtitles={hasSubtitles}
+            subtitlesOn={subtitlesOn}
+            onToggleSubtitles={() => onToggleSubtitles?.()}
+            danmakuSlot={danmakuSlot}
+            onTogglePip={() => void togglePip()}
+            fullscreen={fullscreen}
+            onToggleFullscreen={() => void toggleFullscreen()}
+            onHint={onHint}
+          />
+        </div>
+      )}
+    </div>
   );
 }

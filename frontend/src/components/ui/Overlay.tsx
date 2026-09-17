@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { X } from 'lucide-react';
+import { Check, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { EASE } from '@/lib/motion';
 import { IconButton } from './Button';
@@ -179,6 +179,10 @@ export function Drawer({ open, onClose, title, side = 'right', children, footer,
 export interface DropdownItem {
   key: string;
   label: string;
+  /** 次级说明文字，用于需要解释选项含义的菜单（如清晰度梯度） */
+  description?: string;
+  /** 当前选中项：显示勾选标记 */
+  selected?: boolean;
   icon?: ReactNode;
   danger?: boolean;
   disabled?: boolean;
@@ -190,12 +194,18 @@ export function Dropdown({
   trigger,
   items,
   align = 'end',
+  side = 'bottom',
   className,
   panelClassName,
 }: {
   trigger: (props: { open: boolean; toggle: () => void }) => ReactNode;
   items: DropdownItem[];
   align?: 'start' | 'end';
+  /**
+   * 弹出方向。默认向下；放在屏幕底部的触发器（如视频播放器控制条）必须传 'top'，
+   * 否则面板会超出视口下沿被裁掉——这正是「倍速/清晰度菜单显示不全」的原因。
+   */
+  side?: 'top' | 'bottom';
   className?: string;
   panelClassName?: string;
 }) {
@@ -224,13 +234,14 @@ export function Dropdown({
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, y: -4, scale: 0.98 }}
+            initial={{ opacity: 0, y: side === 'top' ? 4 : -4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -4, scale: 0.98 }}
+            exit={{ opacity: 0, y: side === 'top' ? 4 : -4, scale: 0.98 }}
             transition={{ duration: 0.16, ease: EASE.enter }}
             role="menu"
             className={cn(
-              'absolute top-[calc(100%+6px)] z-70 min-w-44 overflow-hidden rounded-card border border-line bg-surface py-1 shadow-pop',
+              'absolute z-70 min-w-44 overflow-hidden rounded-card border border-line bg-surface py-1 shadow-pop',
+              side === 'top' ? 'bottom-[calc(100%+6px)]' : 'top-[calc(100%+6px)]',
               align === 'end' ? 'right-0' : 'left-0',
               panelClassName,
             )}
@@ -241,6 +252,7 @@ export function Dropdown({
                 <button
                   type="button"
                   role="menuitem"
+                  aria-checked={item.selected}
                   disabled={item.disabled}
                   onClick={() => {
                     if (item.disabled) return;
@@ -248,7 +260,7 @@ export function Dropdown({
                     setOpen(false);
                   }}
                   className={cn(
-                    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-[13px] transition-colors',
+                    'flex w-full items-start gap-2.5 px-3 py-2 text-left text-[13px] transition-colors',
                     item.disabled
                       ? 'cursor-not-allowed text-fg-subtle'
                       : item.danger
@@ -257,7 +269,13 @@ export function Dropdown({
                   )}
                 >
                   {item.icon && <span className="shrink-0 text-current opacity-80">{item.icon}</span>}
-                  <span className="truncate">{item.label}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate">{item.label}</span>
+                    {item.description && (
+                      <span className="mt-0.5 block text-[11px] leading-snug text-fg-muted">{item.description}</span>
+                    )}
+                  </span>
+                  {item.selected && <Check className="mt-0.5 size-3.5 shrink-0 text-accent" />}
                 </button>
               </div>
             ))}

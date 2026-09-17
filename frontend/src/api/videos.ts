@@ -4,11 +4,13 @@ import type {
   CommentQuery,
   CursorData,
   CursorQuery,
+  DanmakuItem,
   PageData,
   Quality,
   RankingItem,
   RankingQuery,
   SearchQuery,
+  SubtitleTrack,
   VideoDetail,
   VideoQuery,
   VideoSummary,
@@ -60,6 +62,18 @@ export const videoApi = {
     http.get<RankingItem[]>('/api/v1/videos/ranking', { query: { ...query } }),
 
   search: (query: SearchQuery) => http.get<SearchResult>('/api/v1/videos/search', { query: { ...query } }),
+
+  /** 弹幕时间线（未登录也可看） */
+  danmaku: (videoId: number) => http.get<DanmakuItem[]>(`/api/v1/videos/${videoId}/danmaku`),
+
+  /** 发送弹幕：timeMs 为相对视频起点的毫秒数 */
+  sendDanmaku: (
+    videoId: number,
+    payload: { content: string; timeMs: number; color?: string; position?: DanmakuItem['position'] },
+  ) => http.post<DanmakuItem>(`/api/v1/videos/${videoId}/danmaku`, payload, { auth: true, idempotent: true }),
+
+  /** 字幕轨道（通常为空：上传链路暂不产出字幕文件） */
+  subtitles: (videoId: number) => http.get<SubtitleTrack[]>(`/api/v1/videos/${videoId}/subtitles`),
 
   shorts: (query: CursorQuery = {}) =>
     http.get<CursorData<VideoSummary>>('/api/v1/videos/shorts', { query: { ...query } }),

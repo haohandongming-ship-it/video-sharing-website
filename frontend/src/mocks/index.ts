@@ -32,6 +32,7 @@ import {
   FILE_HASHES,
   NOTIFICATIONS,
   PLATFORM_SETTINGS,
+  REAL_NAME_TASKS,
   REPORT_TASKS,
   REVIEW_TASKS,
   UPLOAD_TASKS,
@@ -664,6 +665,20 @@ async function route(ctx: Ctx): Promise<Response> {
   if (pathname === '/api/v1/users/suggested' && method === 'GET') {
     return ok(ALL_BRIEFS.slice(2, 10).map((b) => ({ ...b, reason: '你关注的人也在关注' })));
   }
+  /* 创作者搜索：必须放在 /users/{id} 分支之前，否则 "search" 会被当成 id 解析 */
+  if (pathname === '/api/v1/users/search' && method === 'GET') {
+    const keyword = (query.get('q') ?? '').trim().toLowerCase();
+    const page = Number(query.get('page') ?? 1);
+    const pageSize = Number(query.get('pageSize') ?? 20);
+    if (!keyword) return ok(pageOf([], page, pageSize));
+    const matched = ALL_BRIEFS.filter(
+      (b) => b.username.toLowerCase().includes(keyword) || b.nickname.toLowerCase().includes(keyword),
+    ).map((b) => ({
+      ...b,
+      videoCount: VIDEO_STORE.filter((v) => v.detail.author.id === b.id).length,
+    }));
+    return ok(pageOf(matched, page, pageSize));
+  }
   if (parts[2] === 'users' && parts.length >= 4) {
     const userId = Number(parts[3]);
     if (!Number.isFinite(userId)) return fail(BIZ_CODE.NOT_FOUND, '用户不存在', 404);
@@ -945,6 +960,23 @@ async function route(ctx: Ctx): Promise<Response> {
     }
     await delay(240);
     return ok({ success: true, status: task?.status ?? 'APPROVED' });
+  }
+  /* 实名认证审核：与后端 /admin/real-names 行为一致 */
+  if (pathname === '/api/v1/admin/real-names' && method === 'GET') {
+    requirePermission('moderation:realname');
+    const page = Number(query.get('page') ?? 1);
+    const pageSize = Number(query.get('pageSize') ?? 10);
+    const status = query.get('status') ?? 'PENDING';
+    const pool = REAL_NAME_TASKS.filter((t) => t.status === status);
+    return ok(pageOf(pool, page, pageSize));
+  }
+  if (parts[2] === 'admin' && parts[3] === 'real-names' && parts[5] === 'decision' && method === 'POST') {
+    requirePermission('moderation:realname');
+    const userId = Number(parts[4]);
+    const decision = (body as { decision?: 'APPROVE' | 'REJECT' }).decision;
+    const task = REAL_NAME_TASKS.find((t) => t.userId === userId);
+    if (task) task.status = decision === 'APPROVE' ? 'CERTIFIED' : 'REJECTED';
+    return ok({ success: true, status: task?.status ?? 'CERTIFIED' });
   }
   if (pathname === '/api/v1/admin/reports' && method === 'GET') {
     requirePermission('moderation:report');

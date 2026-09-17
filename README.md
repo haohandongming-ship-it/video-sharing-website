@@ -34,6 +34,42 @@ npm exec --yes pnpm@10.18.3 -- dev
 访问 `http://localhost:5173`。演示账号密码统一为 `123456`：`admin`、`moderator`、`laowang`、`newbie`。
 如果只想离线体验，可将 `frontend/.env` 中的 `VITE_USE_MOCK` 显式改为 `true`。
 
+## 本地开发 + 真实基础设施（推荐）
+
+上面的 H2 模式不需要任何外部服务；如果要调试 MySQL / Redis / MinIO 这条真实链路，
+可以用 Docker 只起基础设施，后端仍然在宿主机用 Maven 运行：
+
+```powershell
+# 1. 起基础设施（MySQL 8.4 / Redis 7.4 / MinIO）
+docker compose -f docker-compose.yml -f docker-compose.dev-infra.yml up -d mysql redis minio
+
+# 2. 用 dev-infra profile 启动后端
+powershell -File scripts/start-backend.ps1            # 等价于 -Profile dev-infra
+```
+
+要点：
+
+- MySQL 容器发布在 **13306**，因为本机可能已有原生 MySQL 占用 3306；可用 `.env` 中的 `MYSQL_PORT` 覆盖。
+- Redis 在 6379，MinIO 在 9000（控制台 9001）；后端启动时会自动创建 `video-platform` 桶。
+- 连接参数全部取自根目录 `.env`，与 `docker compose` 共用同一份来源。
+- 演示数据（4 个账号、4 个示例视频）在库为空时自动写入，dev 与 dev-infra 两个 profile 行为一致。
+- 想回到纯 H2 模式：`powershell -File scripts/start-backend.ps1 -Profile dev`。
+- RocketMQ 目前没有被后端代码使用（`pom.xml` 无相关依赖），默认不启动；需要时加 `--profile mq`。
+
+### 头像存储
+
+头像走 `POST /api/v1/users/me/avatar`（multipart，固定字段名 `file`）：图片本体落到对象存储，
+`users.avatar_url` 只保存一条 URL，因此 2MB 以内的图片都不再受数据库列宽限制。
+
+| 关注点 | 说明 |
+| --- | --- |
+| 大小上限 | 2MB（`AvatarService.MAX_BYTES`）；容器层 `max-file-size` 设 3MB 留余量，超限返回业务中文提示而非框架异常 |
+| 格式校验 | 只认文件头魔数（PNG/JPEG/GIF），不信任扩展名与 Content-Type；另限制单边 ≤ 4096 像素 |
+| MinIO 模式 | 启动时下发仅含 `s3:GetObject` 的桶策略，浏览器直连 `publicEndpoint` 读取。预签名 URL 有 7 天上限，不适用于长期展示的头像，因此用公开读策略而不是签名 |
+| 本地模式 | `publicUrl` 返回 `/api/v1/media/**`，由 `MediaController` 同源输出，且只允许图片扩展名 |
+| 旧图清理 | 保存新头像后删除上一张，且仅删除本存储管理的对象（不会误删外链） |
+| 遗留数据 | `node scripts/migrate-base64-avatars.mjs` 把历史上以 base64 存储的头像迁到对象存储 |
+
 ## 局域网访问
 
 前端开发服务器已监听局域网地址。先在运行项目的电脑上执行 `ipconfig`，找到当前 Wi-Fi/以太网网卡的 IPv4 地址，然后让同一局域网内的设备访问：

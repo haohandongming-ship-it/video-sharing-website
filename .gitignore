@@ -10,3 +10,7 @@ frontend/coverage/
 *.log
 *.tsbuildinfo
 .mimosa/
+
+# 手工/CDP 验证产生的截图与浏览器缓存，不属于源码
+gui-test-screenshots/
+.edge-*/

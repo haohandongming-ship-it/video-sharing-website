@@ -9,6 +9,17 @@ public interface StorageGateway {
     StoredObject open(String bucket, String objectKey, long offset, long length);
     void abort(String uploadId);
     String bucket();
+    /**
+     * 直传一个小对象（头像等）。与分片视频上传不同：调用方已经拿到完整字节，
+     * 由服务端校验后再落存储，避免把大文件塞进请求体或数据库列。
+     */
+    void putObject(String objectKey, InputStream input, long size, String contentType);
+    /** 客户端可直接访问的地址；MinIO 返回公开读 URL，本地模式返回后端同源媒体路径。 */
+    String publicUrl(String objectKey);
+    /** 删除对象；对象不存在时静默返回。 */
+    void deleteObject(String objectKey);
+    /** 对象标识是否由本存储管理（用于判断能否安全删除旧头像）。 */
+    boolean manages(String objectKey);
     static void validateVideoHeader(byte[] header,String fileName){
         String lower=fileName.toLowerCase(Locale.ROOT);
         boolean iso=header.length>=8&&header[4]=='f'&&header[5]=='t'&&header[6]=='y'&&header[7]=='p';

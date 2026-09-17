@@ -40,8 +40,12 @@ export default function HomePage() {
   const teenagerMode = useUiStore((s) => s.teenagerMode);
   const isLogin = useAuthStore((s) => s.status === 'authenticated');
 
+  /**
+   * 不按 videoType 过滤：原先硬编码 videoType: 'LONG'，导致短视频永远进不了首页
+   * 「为你推荐」。长/短视频的分流仍由「短视频」页承担，首页作为综合推荐位展示全部公开内容。
+   */
   const query = useMemo(
-    () => ({ videoType: 'LONG' as const, categoryId, sort: sortParam }),
+    () => ({ categoryId, sort: sortParam }),
     [categoryId, sortParam],
   );
 

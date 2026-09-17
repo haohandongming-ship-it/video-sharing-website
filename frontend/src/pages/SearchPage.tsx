@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { formatCount, formatRelative } from '@/lib/format';
-import { useCategories, useVideoSearch } from '@/hooks/useApi';
+import { useCategories, useUserSearch, useVideoSearch } from '@/hooks/useApi';
 import { useUiStore } from '@/stores/uiStore';
 import {
   AvatarWithMeta,
@@ -17,7 +17,7 @@ import {
   VideoCardSkeleton,
 } from '@/components/ui';
 import { VideoCard } from '@/components/video/VideoCard';
-import type { SearchQuery, VideoSummary } from '@/api/types';
+import type { SearchQuery, UserBrief, VideoSummary } from '@/api/types';
 
 type SearchKind = 'video' | 'user' | 'feed';
 type SortKey = NonNullable<SearchQuery['sort']>;
@@ -52,6 +52,12 @@ export default function SearchPage() {
   const toast = useUiStore((s) => s.toast);
 
   const q = params.get('q') ?? '';
+  /*
+   * 归一化关键词里的 @ 前缀：用户按「@laowang」搜索时，@ 会参与 LIKE 匹配，
+   * 而库里存的用户名不含 @，导致搜不到。这里统一剥掉前导 @（可多个），
+   * 视频/创作者/动态三个标签共用同一个清洗后的关键词。
+   */
+  const term = q.trim().replace(/^@+/, '');
   const kind = (params.get('type') as SearchKind | null) ?? 'video';
   const categoryId = params.get('category') ? Number(params.get('category')) : undefined;
   const duration = (params.get('duration') as DurationKey | null) ?? undefined;
@@ -90,7 +96,7 @@ export default function SearchPage() {
 
   const query = useMemo<SearchQuery>(
     () => ({
-      q,
+      q: term,
       page,
       pageSize: 24,
       categoryId,
@@ -99,10 +105,25 @@ export default function SearchPage() {
       sort,
       type: kind,
     }),
-    [categoryId, dateRange, duration, kind, page, q, sort],
+    [categoryId, dateRange, duration, kind, page, term, sort],
   );
 
-  const { data, isLoading, isFetching, isError, refetch } = useVideoSearch(query);
+  /*
+   * 按「结果类型」选择不同的数据源。
+   * 此前无论选哪个标签都只调视频搜索接口——服务端根本没有创作者搜索能力，
+   * 前端传来的 type=user 被丢弃，所以永远搜不到人。
+   */
+  const videoQuery = useVideoSearch(query, kind === 'video');
+  const userQuery = useUserSearch({ q: term, page, pageSize: 24 }, kind === 'user');
+  const active = kind === 'user' ? userQuery : videoQuery;
+  const { isLoading, isFetching, isError, refetch } = active;
+  /** 视频结果里带 suggestions/costMs；创作者结果没有，因此按视频查询类型标注 */
+  const data = active.data as
+    | (import('@/api/videos').SearchResult & { items: (VideoSummary & Partial<UserBrief>)[] })
+    | undefined;
+  const items = data?.items ?? [];
+  const users = (userQuery.data?.items ?? []) as (UserBrief & { videoCount?: number })[];
+  const hasQuery = q.trim().length > 0;
 
   const setParam = (key: string, value?: string | number) => {
     const next = new URLSearchParams(params);
@@ -121,8 +142,6 @@ export default function SearchPage() {
   };
 
   const { data: categories } = useCategories();
-  const items = data?.items ?? [];
-  const hasQuery = q.trim().length > 0;
 
   return (
     <PageContainer className="py-5">
@@ -140,7 +159,7 @@ export default function SearchPage() {
             value={input}
             onChange={(event) => setInput(event.target.value)}
             onClear={() => setInput('')}
-            placeholder="搜索视频、创作者、动态"
+            placeholder="搜索视频、创作者、动态，也可用 @用户名 找创作者"
             aria-label="搜索关键词"
             className="h-11 flex-1"
             autoFocus
@@ -248,18 +267,26 @@ export default function SearchPage() {
               onChange={(key) => setParam('category', key)}
               scrollable
             />
-            <FilterRow
-              label="时长"
-              options={DURATIONS.map((item) => ({ key: item.key, label: item.label }))}
-              value={duration ?? 'all'}
-              onChange={(key) => setParam('duration', key)}
-            />
-            <FilterRow
-              label="时间"
-              options={DATE_RANGES.map((item) => ({ key: item.key, label: item.label }))}
-              value={dateRange}
-              onChange={(key) => setParam('dateRange', key)}
-            />
+            {/*
+              分区/时长/时间只对作品有意义。选「创作者」时它们不参与查询，
+              继续展示会让用户以为筛选生效了，因此隐藏。
+            */}
+            {kind !== 'user' && (
+              <>
+                <FilterRow
+                  label="时长"
+                  options={DURATIONS.map((item) => ({ key: item.key, label: item.label }))}
+                  value={duration ?? 'all'}
+                  onChange={(key) => setParam('duration', key)}
+                />
+                <FilterRow
+                  label="时间"
+                  options={DATE_RANGES.map((item) => ({ key: item.key, label: item.label }))}
+                  value={dateRange}
+                  onChange={(key) => setParam('dateRange', key)}
+                />
+              </>
+            )}
           </div>
 
           {/* 结果列表 */}
@@ -297,9 +324,37 @@ export default function SearchPage() {
                   <VideoCard key={video.id} video={video} />
                 ))}
               </div>
+            ) : kind === 'user' ? (
+              <ul className="flex flex-col gap-2">
+                {users.map((user) => (
+                  <li
+                    key={user.id}
+                    className="cursor-pointer rounded-card border border-line bg-surface p-3 transition-colors hover:border-fg-subtle"
+                    onClick={() => navigate(`/user/${user.id}`)}
+                  >
+                    <AvatarWithMeta
+                      src={user.avatar}
+                      name={user.nickname}
+                      certified={user.certified}
+                      meta={
+                        <span className="flex flex-wrap items-center gap-2">
+                          <span>@{user.username}</span>
+                          <span aria-hidden>·</span>
+                          <span>{formatCount(user.followerCount ?? 0)} 粉丝</span>
+                          <span aria-hidden>·</span>
+                          <span>{formatCount(user.videoCount ?? 0)} 作品</span>
+                        </span>
+                      }
+                    />
+                    {user.bio && (
+                      <p className="mt-2 line-clamp-2 text-[13px] text-fg-muted sm:pl-[52px]">{user.bio}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
             ) : (
               <ul className="flex flex-col gap-2">
-                {items.map((video: VideoSummary) => (
+                {items.map((video) => (
                   <li key={video.id} className="rounded-card border border-line bg-surface p-3">
                     <AvatarWithMeta
                       src={video.author.avatar}

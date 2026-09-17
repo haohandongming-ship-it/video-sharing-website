@@ -34,7 +34,8 @@ interface PlayerState {
   setVolume: (volume: number) => void;
   setMuted: (muted: boolean) => void;
   setPlaybackRate: (rate: number) => void;
-  setQuality: (quality: Quality) => void;
+  /** null = 自动（ABR）；与设置页「默认清晰度」共用同一字段 */
+  setQuality: (quality: Quality | null) => void;
   setAutoplayNext: (value: boolean) => void;
   setTheaterMode: (value: boolean) => void;
   /** 记录并（节流）上报播放进度，文档 5.6：每 15s + 离开页面上报 */

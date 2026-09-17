@@ -50,6 +50,7 @@ export type Permission =
   | 'creator:dashboard'
   | 'moderation:review'
   | 'moderation:report'
+  | 'moderation:realname'
   | 'admin:user_manage'
   | 'admin:role_assign'
   | 'admin:system_config'
@@ -125,6 +126,26 @@ export type VideoType = 'LONG' | 'SHORT';
 export type VideoStatus = 'PROCESSING' | 'REVIEWING' | 'PUBLISHED' | 'REJECTED' | 'DELETED';
 export type Visibility = 'PUBLIC' | 'PRIVATE' | 'UNLISTED';
 export type Quality = '360p' | '480p' | '720p' | '1080p' | 'source';
+
+/** 弹幕条目（时间轴上的单条） */
+export interface DanmakuItem {
+  id: number;
+  /** 相对视频起点的毫秒数 */
+  timeMs: number;
+  content: string;
+  color: string;
+  position: 'SCROLL' | 'TOP' | 'BOTTOM';
+  user: UserBrief;
+}
+
+/** 字幕轨道 */
+export interface SubtitleTrack {
+  languageCode: string;
+  label: string;
+  url: string | null;
+  format: string;
+  isDefault: boolean;
+}
 
 export interface Category {
   id: number;
@@ -316,6 +337,11 @@ export interface UploadInitPayload {
   tags?: string[];
   /** 浏览器探测出的原始时长，转码完成后保留在视频记录中 */
   duration?: number;
+  /**
+   * 上传前在 canvas 上抓取的封面帧（data:image/...;base64）。
+   * 后端会把它落到对象存储并把 URL 写进 videos.cover_url；不提交则回落到内置占位图。
+   */
+  coverDataUrl?: string;
 }
 
 export interface UploadInitResult {
@@ -453,8 +479,23 @@ export interface ReportTask {
   createdAt: string;
 }
 
-export interface AdminUserRow {
-  id: number;
+/** 实名认证申请（审核队列行） */
+export interface RealNameTask {
+  userId: number;
+  username: string;
+  nickname: string;
+  avatar: string | null;
+  phone: string | null;
+  /** 真实姓名（后端解密后返回） */
+  realName: string | null;
+  /** 掩码后的证件号，仅保留前 6 后 4 */
+  idCardMasked: string | null;
+  status: 'PENDING' | 'CERTIFIED' | 'REJECTED' | 'NONE';
+  submittedAt: string | null;
+  certifiedAt: string | null;
+}
+
+export interface AdminUserRow {  id: number;
   username: string;
   nickname: string;
   avatar: string | null;

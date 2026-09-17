@@ -34,6 +34,17 @@ export const QUALITY_LABELS: Record<Quality, string> = {
 
 export const QUALITY_ORDER: Quality[] = ['1080p', '720p', '480p', '360p'];
 
+/**
+ * 长视频清晰度梯度（播放器菜单与设置页「默认清晰度」共用同一份定义）。
+ * `null` 表示自动：交给 hls.js 的 ABR 按带宽切换。
+ */
+export const QUALITY_TIERS: { value: Quality | null; label: string; description: string }[] = [
+  { value: null, label: '自动', description: '按网络状况自动切换清晰度' },
+  { value: '1080p', label: '1080P', description: '画质优先，流量消耗较高' },
+  { value: '720p', label: '720P', description: '画质与流量平衡' },
+  { value: '480p', label: '480P', description: '流量优先，网络较差时更流畅' },
+];
+
 export const RATE_OPTIONS = [2, 1.5, 1.25, 1, 0.75, 0.5] as const;
 
 /** 播放计数规则（文档 11.3）：观看 ≥3s 且 24h 内去重 */

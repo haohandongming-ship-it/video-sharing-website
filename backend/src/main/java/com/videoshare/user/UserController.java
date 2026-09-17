@@ -6,6 +6,9 @@ import com.videoshare.common.ApiResponse;
 import com.videoshare.common.ErrorCode;
 import com.videoshare.common.IdempotencyService;
 import com.videoshare.common.PageResult;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import java.util.List;
 import java.util.Map;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -18,16 +21,19 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/v1")
 public class UserController {
 
     private final UserApiService service;
+    private final AvatarService avatarService;
     private final IdempotencyService idempotency;
 
-    public UserController(UserApiService service, IdempotencyService idempotency) {
+    public UserController(UserApiService service, AvatarService avatarService, IdempotencyService idempotency) {
         this.service = service;
+        this.avatarService = avatarService;
         this.idempotency = idempotency;
     }
 
@@ -36,14 +42,25 @@ public class UserController {
         return ApiResponse.ok(service.categories());
     }
 
-    @GetMapping("/users/me")
-    public ApiResponse<Map<String, Object>> me(@AuthenticationPrincipal CurrentUser c) {
+    @GetMapping("/users/me")    public ApiResponse<Map<String, Object>> me(@AuthenticationPrincipal CurrentUser c) {
         return ApiResponse.ok(service.profile(require(c), c));
     }
 
     @PutMapping("/users/me")
     public ApiResponse<Map<String, Object>> update(@AuthenticationPrincipal CurrentUser c, @RequestBody Map<String, Object> body) {
         return ApiResponse.ok(service.update(require(c), body));
+    }
+
+    /**
+     * 头像上传：图片落对象存储，数据库只存 URL（原先的 base64 直存列已被 V8 放宽，
+     * 但那条路会把 2MB 图片编码成约 2.7M 字符，因此改为走存储）。
+     */
+    @PostMapping("/users/me/avatar")
+    public ApiResponse<Map<String, Object>> uploadAvatar(@AuthenticationPrincipal CurrentUser c,
+                                                         @RequestParam("file") MultipartFile file) {
+        long userId = require(c);
+        avatarService.update(userId, file);
+        return ApiResponse.ok(service.profile(userId, c));
     }
 
     @PutMapping("/users/me/password")
@@ -73,6 +90,17 @@ public class UserController {
     @GetMapping("/users/suggested")
     public ApiResponse<List<Map<String, Object>>> suggested(@AuthenticationPrincipal CurrentUser c) {
         return ApiResponse.ok(service.suggested(c == null ? null : c.id()));
+    }
+
+    /**
+     * 创作者搜索。必须声明在 /users/{id} 之前，否则 "search" 会被当成路径变量 id。
+     * 未登录也可用（与视频搜索一致）。
+     */
+    @GetMapping("/users/search")
+    public ApiResponse<PageResult<Map<String, Object>>> searchUsers(@RequestParam @NotBlank String q,
+                                                                    @RequestParam(defaultValue = "1") @Min(1) int page,
+                                                                    @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize) {
+        return ApiResponse.ok(service.searchCreators(q, page, pageSize));
     }
 
     @GetMapping("/users/{id}")

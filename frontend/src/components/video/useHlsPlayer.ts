@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type HlsType from 'hls.js';
 import type { Level } from 'hls.js';
 import { DEMO_HLS_URL, USE_MOCK } from '@/api/config';
+import type { Quality } from '@/api/types';
 
 export interface HlsLevel {
   index: number;
@@ -33,6 +34,8 @@ export interface HlsPlayerApi {
   currentLevel: number;
   /** -1 表示自动（ABR） */
   setLevel: (index: number) => void;
+  /** 把首选清晰度映射为清单里最接近的层级；-1 表示交给 ABR */
+  levelForQuality: (quality: Quality | null) => number;
   play: () => Promise<void>;
   pause: () => void;
   toggle: () => void;
@@ -293,6 +296,35 @@ export function useHlsPlayer({
     if (hlsRef.current) hlsRef.current.currentLevel = index;
   }, []);
 
+  /**
+   * 把「首选清晰度」落到具体 HLS 层级：
+   * - 无偏好（自动）或清单里没有可用层级时返回 -1，交给 ABR；
+   * - 否则取高度最接近目标的一层，例如清单只有 720p 而用户选 1080p 时使用 720p。
+   *
+   * 需要它是因为偏好值是 1080p/720p/480p 这类固定梯度，而清单里的层级由转码产物决定，
+   * 两者并不一一对应；没有这层映射，用户的选择就无法作用到播放器。
+   */
+  const levelForQuality = useCallback(
+    (quality: Quality | null): number => {
+      if (!quality || levels.length === 0) return -1;
+      const target = Number.parseInt(quality, 10);
+      if (!Number.isFinite(target)) return -1;
+      let best = levels[0].index;
+      let bestDistance = Number.POSITIVE_INFINITY;
+      for (const level of levels) {
+        // height 为 0 表示清单未给出分辨率，跳过以免抢占真实层级
+        if (!level.height) continue;
+        const distance = Math.abs(level.height - target);
+        if (distance < bestDistance) {
+          bestDistance = distance;
+          best = level.index;
+        }
+      }
+      return best;
+    },
+    [levels],
+  );
+
   return {
     videoRef,
     ready,
@@ -306,6 +338,7 @@ export function useHlsPlayer({
     levels,
     currentLevel,
     setLevel,
+    levelForQuality,
     play,
     pause,
     toggle,

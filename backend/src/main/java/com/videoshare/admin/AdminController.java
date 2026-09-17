@@ -58,6 +58,26 @@ public class AdminController {
                 () -> service.decide(c.id(), id, body.get("decision"), body.get("note"))));
     }
 
+    /** 实名认证待审队列（审核员与管理员可见）。 */
+    @GetMapping("/real-names")
+    public ApiResponse<PageResult<Map<String, Object>>> realNames(@AuthenticationPrincipal CurrentUser c,
+                                                                  @RequestParam(required = false) String status,
+                                                                  @RequestParam(defaultValue = "1") int page,
+                                                                  @RequestParam(defaultValue = "10") int pageSize) {
+        moderator(c);
+        return ApiResponse.ok(service.realNames(status, page, pageSize));
+    }
+
+    @PostMapping("/real-names/{userId}/decision")
+    public ApiResponse<Map<String, Object>> decideRealName(@PathVariable long userId,
+                                                           @AuthenticationPrincipal CurrentUser c,
+                                                           @RequestHeader(name = "Idempotency-Key", required = false) String key,
+                                                           @RequestBody Map<String, String> body) {
+        moderator(c);
+        return ApiResponse.ok(idempotency.execute(c.id(), "admin:realname:" + userId, key,
+                () -> service.decideRealName(c.id(), userId, body.get("decision"), body.get("note"))));
+    }
+
     @GetMapping("/reports")
     public ApiResponse<PageResult<Map<String, Object>>> reports(@AuthenticationPrincipal CurrentUser c,
                                                                 @RequestParam(required = false) String status,
@@ -65,8 +85,7 @@ public class AdminController {
                                                                 @RequestParam(defaultValue = "1") int page,
                                                                 @RequestParam(defaultValue = "10") int pageSize) {
         moderator(c);
-        return ApiResponse.ok(service.reports(status, reason, page, pageSize));
-    }
+        return ApiResponse.ok(service.reports(status, reason, page, pageSize));    }
 
     @PostMapping("/reports/{id}/handle")
     public ApiResponse<Map<String, Object>> handle(@PathVariable long id,

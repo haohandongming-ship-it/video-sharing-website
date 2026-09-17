@@ -43,6 +43,16 @@ export const authApi = {
   updateProfile: (payload: Partial<Pick<UserProfile, 'nickname' | 'bio' | 'avatar'>>) =>
     http.put<UserProfile>('/api/v1/users/me', payload, { auth: true }),
 
+  /**
+   * 头像上传：图片本体走 multipart 传到后端再落对象存储，返回更新后的资料（含新的 avatar URL）。
+   * 不再把 base64 Data URL 塞进 profile 接口——那会把编码后数 MB 的字符串写进数据库列。
+   */
+  uploadAvatar: (file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return http.post<UserProfile>('/api/v1/users/me/avatar', form, { auth: true });
+  },
+
   changePassword: (oldPassword: string, newPassword: string) =>
     http.put<{ success: boolean }>('/api/v1/users/me/password', { oldPassword, newPassword }, { auth: true }),
 

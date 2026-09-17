@@ -4,7 +4,8 @@ import com.videoshare.auth.CurrentUser;import com.videoshare.common.*;import jav
 
 @RestController @RequestMapping("/api/v1")
 public class SocialController {
-    private final SocialService service;private final IdempotencyService idempotency;public SocialController(SocialService service,IdempotencyService idempotency){this.service=service;this.idempotency=idempotency;}
+    private final SocialService service;private final IdempotencyService idempotency;private final MessageAttachmentService attachments;
+    public SocialController(SocialService service,IdempotencyService idempotency,MessageAttachmentService attachments){this.service=service;this.idempotency=idempotency;this.attachments=attachments;}
     @GetMapping("/feeds")public ApiResponse<Map<String,Object>>feeds(@RequestParam(defaultValue="recommend")String type,@RequestParam(required=false)String cursor,@RequestParam(defaultValue="10")int pageSize,@AuthenticationPrincipal CurrentUser c){return ApiResponse.ok(service.feeds(type,cursor,pageSize,c==null?null:c.id(),null));}
     @GetMapping("/feeds/{id}")public ApiResponse<Map<String,Object>>feed(@PathVariable long id,@AuthenticationPrincipal CurrentUser c){return ApiResponse.ok(service.feed(id,c==null?null:c.id()));}
     @PostMapping("/feeds")public ApiResponse<Map<String,Object>>publish(@AuthenticationPrincipal CurrentUser c,@RequestHeader(name="Idempotency-Key",required=false)String key,@RequestBody Map<String,Object>b){long user=require(c);return ApiResponse.ok(idempotency.execute(user,"feed:publish",key,()->service.publish(user,b)));}
@@ -19,6 +20,10 @@ public class SocialController {
     @GetMapping("/notifications/unread-count")public ApiResponse<Map<String,Long>>unread(@AuthenticationPrincipal CurrentUser c){return ApiResponse.ok(Map.of("count",c==null?0L:service.notifications(c.id(),null,1,1).get("unreadCount")instanceof Number n?n.longValue():0L));}
     @PostMapping("/notifications/read")public ApiResponse<Map<String,Boolean>>read(@AuthenticationPrincipal CurrentUser c,@RequestBody Map<String,Object>b){service.readNotifications(require(c),b.get("ids")instanceof List<?> ids?ids:List.of());return ApiResponse.ok(Map.of("success",true));}
     @GetMapping("/messages/conversations")public ApiResponse<List<Map<String,Object>>>conversations(@AuthenticationPrincipal CurrentUser c){return ApiResponse.ok(service.conversations(require(c)));}
+    /** 私信附件上传：图片/视频本体落对象存储，返回可附在消息里的 URL。 */
+    @PostMapping("/messages/attachments")public ApiResponse<Map<String,Object>>uploadAttachment(@AuthenticationPrincipal CurrentUser c,@RequestParam("file")org.springframework.web.multipart.MultipartFile file){require(c);return ApiResponse.ok(attachments.upload(file));}
+    /** 个人主页「发私信」：找到或创建与目标用户的会话，返回会话 id 供前端跳转。 */
+    @PostMapping("/messages/conversations")public ApiResponse<Map<String,Object>>openConversation(@AuthenticationPrincipal CurrentUser c,@RequestBody Map<String,Object>b){Object peer=b.get("peerId");if(!(peer instanceof Number n))throw new ApiException(ErrorCode.VALIDATION,"缺少 peerId");return ApiResponse.ok(service.openConversation(require(c),n.longValue()));}
     @GetMapping("/messages/conversations/{id}/messages")public ApiResponse<List<Map<String,Object>>>messages(@PathVariable long id,@AuthenticationPrincipal CurrentUser c){return ApiResponse.ok(service.messages(require(c),id));}
     @PostMapping("/messages/conversations/{id}/messages")public ApiResponse<Map<String,Object>>send(@PathVariable long id,@AuthenticationPrincipal CurrentUser c,@RequestHeader(name="Idempotency-Key",required=false)String key,@RequestBody Map<String,Object>b){long user=require(c);return ApiResponse.ok(idempotency.execute(user,"message:send:"+id,key,()->service.sendMessage(user,id,b)));}
     private long require(CurrentUser c){if(c==null)throw new ApiException(ErrorCode.UNAUTHORIZED,"请先登录");return c.id();}

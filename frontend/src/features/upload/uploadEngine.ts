@@ -203,7 +203,10 @@ export function captureFrame(file: File, atSecond = 1): Promise<string | null> {
         return;
       }
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL('image/webp', 0.8));
+      // webp 体积更小，但并非所有浏览器都支持编码；不支持时会返回 data:image/png，这里显式兜底，
+      // 避免拿到非预期格式后在后端校验处被拒。
+      const webp = canvas.toDataURL('image/webp', 0.8);
+      resolve(webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png'));
       URL.revokeObjectURL(url);
     };
     video.onerror = () => {

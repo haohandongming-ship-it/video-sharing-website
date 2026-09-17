@@ -386,7 +386,16 @@ export default function UploadPage() {
     if (probed) {
       const at = probed.duration > 2 ? 1 : 0;
       setCaptureAt(at);
-      setCoverDataUrl(await captureFrame(nextFile, at));
+      const auto = await captureFrame(nextFile, at);
+      setCoverDataUrl(auto);
+      // 抓帧失败必须是可见的：否则视频列表会静默退回内置占位图，用户以为封面是自己选的
+      if (!auto) {
+        useUiStore.getState().toast({
+          title: '封面自动截取失败',
+          description: '可拖动时间点后点击「重新截取」，或先上传稍后在作品中更换封面',
+          tone: 'warning',
+        });
+      }
     }
   }
 
@@ -565,6 +574,8 @@ export default function UploadPage() {
         visibility,
         tags,
         duration: Math.max(0, Math.round(meta?.duration ?? 0)),
+        // 把用户截取（或默认首帧）的封面交给后端落存储，否则视频列表会统一显示占位图
+        coverDataUrl: coverDataUrl ?? undefined,
       });
       if (cancelledRef.current) return;
 

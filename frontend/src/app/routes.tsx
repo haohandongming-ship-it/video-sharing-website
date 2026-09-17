@@ -30,6 +30,7 @@ const AdminReviewPage = lazy(() => import('@/pages/admin/AdminReviewPage'));
 const AdminReportPage = lazy(() => import('@/pages/admin/AdminReportPage'));
 const AdminUserPage = lazy(() => import('@/pages/admin/AdminUserPage'));
 const AdminVideoPage = lazy(() => import('@/pages/admin/AdminVideoPage'));
+const AdminRealNamePage = lazy(() => import('@/pages/admin/AdminRealNamePage'));
 const AdminSettingsPage = lazy(() => import('@/pages/admin/AdminSettingsPage'));
 const AdminAuditPage = lazy(() => import('@/pages/admin/AdminAuditPage'));
 const AdminShell = lazy(() => import('@/pages/admin/AdminShell'));
@@ -166,6 +167,14 @@ export function AppRoutes() {
               element={
                 <RequirePermission permission="admin:user_manage">
                   <AdminUserPage />
+                </RequirePermission>
+              }
+            />
+            <Route
+              path="real-names"
+              element={
+                <RequirePermission permission="moderation:realname">
+                  <AdminRealNamePage />
                 </RequirePermission>
               }
             />
