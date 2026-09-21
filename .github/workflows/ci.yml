@@ -119,10 +119,14 @@ jobs:
 
       - name: 后端依赖审计（OWASP dependency-check）
         working-directory: backend
-        # NVD API 从 2024 起强制要求 API key，无 key 直接拒绝请求。
-        # 这里只启用 OSS Index（也免费但无需 key）并跳过 NVD 实时同步，
-        # 后续若需 NVD 全量数据可在 GitHub Secrets 配置 NVD_API_KEY 后取消 skip。
+        # 两个主要漏洞数据源现在都需要凭证：
+        #   - NVD：2024 起强制 API key，无 key 直接拒绝（NvdApiException）
+        #   - OSS Index：现在也强制认证（Sonatype Guide token）
+        # 未配置凭证时，本地库为空会抛 NoDataException 并让构建失败。
+        # 用 failOnError=false 降级为"尽力而为"：跑得通就报，跑不通就跳过告警，
+        # 不阻塞 CI（本 job 本身也是 continue-on-error）。
+        #
+        # 想让它真正生效：在 GitHub Secrets 配置 NVD_API_KEY，并追加
+        #   -DnvdApiKey=${{ secrets.NVD_API_KEY }} -DfailOnError=true
         run: |
-          mvn -B org.owasp:dependency-check-maven:check \
-            -Dnvd.dependency.check.skip=true \
-            -Dossindex.enabled=true
+          mvn -B org.owasp:dependency-check-maven:check -DfailOnError=false
