@@ -26,7 +26,8 @@ permissions:
 
 env:
   # 与 frontend/pnpm-lock.yaml 生成时使用的版本保持一致。
-  PNPM_VERSION: '10.18.3'
+  # 注意：lockfileVersion: '9.0' 需要 pnpm 9+；当前本地使用 11.21.0。
+  PNPM_VERSION: '11.21.0'
 
 jobs:
   backend:
