@@ -1,0 +1,121 @@
+# 持续集成：合并前的质量门禁。
+#
+# 目标是把「报告里靠人工发现的漏洞」变成自动化拦截，因此这里跑的都是本地已有、
+# 且已被验证过的命令，不引入新的工具链：
+#   - 后端：mvn clean test（必须用 clean，增量编译会掩盖依赖变更导致的编译错误）
+#   - 前端：pnpm run verify（typecheck + lint + vitest + build + 产物弱口令扫描）
+#   - 依赖：pnpm audit 与 OWASP dependency-check（首次接入先只告警，不阻塞合并）
+#
+# 注：所有依赖安装都显式指定 registry，避免受 runner 默认源影响。
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# 同一分支上的新提交会取消仍在跑的旧任务，避免排队浪费。
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # 与 frontend/pnpm-lock.yaml 生成时使用的版本保持一致。
+  PNPM_VERSION: '10.18.3'
+
+jobs:
+  backend:
+    name: 后端 · 编译与测试
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      # 必须 clean：maven-compiler-plugin 的增量编译会跳过未改动的源文件，
+      # 从而掩盖「依赖升级后某个类已无法编译」这类问题（minio 8.6.0 升级时实际踩到过）。
+      - name: mvn clean test
+        working-directory: backend
+        run: mvn -B clean test
+
+      - name: 归档测试报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-surefire-reports
+          path: backend/target/surefire-reports/
+          if-no-files-found: ignore
+
+  frontend:
+    name: 前端 · 类型 / Lint / 单测 / 构建 / 产物门禁
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 安装依赖
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile --registry https://registry.npmjs.org
+
+      # verify 末尾的 verify:secrets 会扫描构建产物，断言其中不含演示账号弱口令。
+      # 该检查依赖 dist 存在，因此顺序必须是「先 build 再扫描」，已固化在 verify 脚本里。
+      - name: pnpm run verify
+        working-directory: frontend
+        run: pnpm run verify
+
+  dependency-audit:
+    name: 依赖漏洞扫描（仅告警）
+    runs-on: ubuntu-latest
+    # 首次接入先不阻塞合并：NVD 数据库下载与 registry 可用性都可能造成误报式失败。
+    # 待确认稳定后把 continue-on-error 去掉即可转为硬门禁。
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 安装 Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 前端依赖审计
+        working-directory: frontend
+        run: |
+          pnpm install --frozen-lockfile --registry https://registry.npmjs.org
+          pnpm audit --audit-level=high --registry https://registry.npmjs.org
+
+      - name: 安装 JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: 后端依赖审计（OWASP dependency-check）
+        working-directory: backend
+        run: mvn -B org.owasp:dependency-check-maven:check

@@ -48,6 +48,18 @@ public class UserApiService {
     private static final int SUGGESTED_LIMIT = 8;
     private static final int TREND_MAX_DAYS = 90;
 
+    /*
+     * 以下三个是**占位值**，不是真实统计：趋势曲线由「总量 ÷ 窗口长度」叠加固定波形合成，
+     * 平均观看时长与完播率是常量。集中成常量是为了让占位性质一眼可见，也便于接入真实
+     * 按日聚合时定位替换点。详见 dashboard() 的说明。
+     */
+    private static final double PLACEHOLDER_AVG_WATCH_SECONDS = 214;
+    private static final double PLACEHOLDER_COMPLETION_RATE = 0.42;
+    /** 合成趋势曲线的波形幅度（天）：只为让曲线有起伏，不代表真实日增。 */
+    private static final long PLACEHOLDER_TREND_WAVE_STEP = 7;
+    /** 占位估算：用总播放量乘该系数充当「近 7 日播放量」。 */
+    private static final double PLACEHOLDER_VIEWS_7D_RATIO = 0.14;
+
     private final UserRepository users;
     private final VideoRepository videos;
     private final VideoCatalog catalog;
@@ -312,12 +324,20 @@ public class UserApiService {
             Map<String, Object> m = new LinkedHashMap<>(summaries.get(i));
             m.put("transcodeProgress", video.getStatus() == VideoStatus.PROCESSING ? 40 : 100);
             m.put("rejectReason", video.getReviewNote());
-            m.put("views7d", Math.round(video.getViewCount() * .14));
+            // 占位估算：按总播放量乘一个固定系数，并非真实近 7 日播放量。
+            m.put("views7d", Math.round(video.getViewCount() * PLACEHOLDER_VIEWS_7D_RATIO));
             items.add(m);
         }
         return PageResult.of(items, found.total(), found.page(), found.pageSize());
     }
 
+    /**
+     * 创作者数据看板。
+     *
+     * <p><b>注意：{@code trend} 与部分派生指标是占位实现，不是真实统计。</b> 趋势曲线由
+     * 「总量 ÷ 窗口长度」再叠加一个固定波形合成，{@code avgWatchSeconds} 与
+     * {@code completionRate} 是常量。接入真实按日聚合前，这些数字不具参考意义。</p>
+     */
     public Map<String, Object> dashboard(long userId, int days) {
         int window = Math.clamp(days, 1, TREND_MAX_DAYS);
         long totalViews = views.count("SELECT COALESCE(SUM(view_count),0) FROM videos WHERE user_id=?", userId);
@@ -330,7 +350,7 @@ public class UserApiService {
         for (int i = window - 1; i >= 0; i--) {
             Map<String, Object> day = new LinkedHashMap<>();
             day.put("date", today.minusDays(i));
-            day.put("views", Math.max(0, totalViews / window + (i % 5) * 7));
+            day.put("views", Math.max(0, totalViews / window + (i % 5) * PLACEHOLDER_TREND_WAVE_STEP));
             day.put("likes", Math.max(0, totalLikes / window));
             day.put("comments", Math.max(0, totalComments / window));
             day.put("favorites", Math.max(0, totalFavorites / window));
@@ -342,8 +362,8 @@ public class UserApiService {
         out.put("totals", Map.of("views", totalViews, "likes", totalLikes, "comments", totalComments, "favorites", totalFavorites));
         out.put("followerTotal", followerTotal);
         out.put("followerDelta", 0);
-        out.put("avgWatchSeconds", 214);
-        out.put("completionRate", .42);
+        out.put("avgWatchSeconds", PLACEHOLDER_AVG_WATCH_SECONDS);
+        out.put("completionRate", PLACEHOLDER_COMPLETION_RATE);
         return out;
     }
 

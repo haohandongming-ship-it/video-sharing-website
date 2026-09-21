@@ -1,6 +1,8 @@
 package com.videoshare.media;
 
+import com.videoshare.auth.CurrentUser;
 import com.videoshare.common.*;
+import com.videoshare.user.Role;
 import com.videoshare.video.*;
 import java.io.InputStream;
 import java.sql.Timestamp;
@@ -58,17 +60,26 @@ public class UploadService {
 
         Optional<FileAsset> existing = files.findBySha256AndFileSize(sha, size);
         if (existing.isPresent()) {
-            existing.get().reference();
-            Video v = createVideo(userId, existing.get().getId(), title, text(b, "description"), category, type,
-                    enumValue(Visibility.class, text(b, "visibility"), Visibility.PUBLIC), size, duration);
-            videos.save(v);
-            // 秒传：文件已存在，直接带封面进入待审核
-            v.transcodeComplete("/api/v1/videos/" + v.getId() + "/source", coverUrl, duration);
-            videos.save(v);
-            jdbc.update("INSERT INTO video_reviews(video_id,machine_result,machine_labels,risk_level,status) VALUES(?,?,?,?,?)",
-                    v.getId(), "PASS", "[]", "LOW", "PENDING");
-            tags.append(v.getId(), list(b.get("tags")));
-            return Map.of("instant", true, "fileId", existing.get().getId(), "videoId", v.getId());
+            // SEC-13：秒传仅限同一用户复用自己的历史文件，防止跨用户引用
+            Long fileId = existing.get().getId();
+            List<Integer> rows = jdbc.queryForList(
+                    "SELECT 1 FROM videos WHERE user_id = ? AND source_file_id = ? LIMIT 1",
+                    Integer.class, userId, fileId);
+            boolean ownedByCurrentUser = !rows.isEmpty();
+            if (ownedByCurrentUser) {
+                existing.get().reference();
+                Video v = createVideo(userId, fileId, title, text(b, "description"), category, type,
+                        enumValue(Visibility.class, text(b, "visibility"), Visibility.PUBLIC), size, duration);
+                videos.save(v);
+                // 秒传：文件已存在，直接带封面进入待审核
+                v.transcodeComplete("/api/v1/videos/" + v.getId() + "/source", coverUrl, duration);
+                videos.save(v);
+                jdbc.update("INSERT INTO video_reviews(video_id,machine_result,machine_labels,risk_level,status) VALUES(?,?,?,?,?)",
+                        v.getId(), "PASS", "[]", "LOW", "PENDING");
+                tags.append(v.getId(), list(b.get("tags")));
+                return Map.of("instant", true, "fileId", fileId, "videoId", v.getId());
+            }
+            // 文件存在但属主不是当前用户：走正常上传流程（不允许跨用户秒传）
         }
 
         String id = "up_" + UUID.randomUUID().toString().replace("-", "");
@@ -141,48 +152,67 @@ public class UploadService {
         jdbc.update("UPDATE upload_sessions SET status='ABORTED' WHERE id=?", id);
     }
 
+    /**
+     * 服务端推进转码任务。**只允许**由 {@link TranscodeWorker} 的定时任务调用。
+     *
+     * <p>此前这段写操作挂在 GET 的进度查询接口上，任何匿名请求都能把任意视频推过转码
+     * 门槛（实测进度 5 → 25 → 45 → 65 一路到 SUCCESS 并翻转为待审核）。现在推进逻辑
+     * 不再暴露为 HTTP 接口，对外只有只读的 {@link #snapshot(long, CurrentUser)}。</p>
+     */
     @Transactional
-    public Map<String, Object> progress(long videoId) {
+    public void advance(long videoId) {
         Video v = videos.findById(videoId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "视频不存在"));
-        List<Map<String, Object>> tasks = jdbc.queryForList(
-                "SELECT * FROM transcode_tasks WHERE video_id=? ORDER BY id DESC LIMIT 1", videoId);
-        if (tasks.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "转码任务不存在");
-        Map<String, Object> task = tasks.get(0);
+        Map<String, Object> task = latestTask(videoId);
+        if (!"RUNNING".equals(String.valueOf(task.get("status")))) return;
         long taskId = ((Number) task.get("id")).longValue();
         int progress = ((Number) task.get("progress")).intValue();
-        String status = String.valueOf(task.get("status"));
-        if ("RUNNING".equals(status)) {
-            int next = Math.min(100, progress + 20);
-            int changed = jdbc.update(
-                    "UPDATE transcode_tasks SET progress=?,status=?,completed_at=CASE WHEN ?=100 THEN CURRENT_TIMESTAMP ELSE completed_at END WHERE id=? AND status='RUNNING' AND progress=?",
-                    next, next >= 100 ? "SUCCESS" : "RUNNING", next, taskId, progress);
-            if (changed > 0) {
-                progress = next;
-                if (progress >= 100) {
-                    status = "SUCCESS";
-                    // 用上传时抓取的封面；没有则回落到项目自带的占位图
-                    v.transcodeComplete("/api/v1/videos/" + videoId + "/source", coverFor(videoId), v.getDuration());
-                    videos.save(v);
-                    if (jdbc.queryForObject("SELECT COUNT(*) FROM video_reviews WHERE video_id=?", Integer.class, videoId) == 0)
-                        jdbc.update("INSERT INTO video_reviews(video_id,machine_result,machine_labels,risk_level,status) VALUES(?,?,?,?,?)",
-                                videoId, "PASS", "[]", "LOW", "PENDING");
-                }
-            } else {
-                Map<String, Object> latest = jdbc.queryForMap("SELECT progress,status FROM transcode_tasks WHERE id=?", taskId);
-                progress = ((Number) latest.get("progress")).intValue();
-                status = String.valueOf(latest.get("status"));
-            }
+        int next = Math.min(100, progress + 20);
+        // 乐观并发：progress 未被本实例读到时即视为已被其他实例推进，不重复写。
+        int changed = jdbc.update(
+                "UPDATE transcode_tasks SET progress=?,status=?,completed_at=CASE WHEN ?=100 THEN CURRENT_TIMESTAMP ELSE completed_at END WHERE id=? AND status='RUNNING' AND progress=?",
+                next, next >= 100 ? "SUCCESS" : "RUNNING", next, taskId, progress);
+        if (changed > 0 && next >= 100) {
+            // 用上传时抓取的封面；没有则回落到项目自带的占位图
+            v.transcodeComplete("/api/v1/videos/" + videoId + "/source", coverFor(videoId), v.getDuration());
+            videos.save(v);
+            if (jdbc.queryForObject("SELECT COUNT(*) FROM video_reviews WHERE video_id=?", Integer.class, videoId) == 0)
+                jdbc.update("INSERT INTO video_reviews(video_id,machine_result,machine_labels,risk_level,status) VALUES(?,?,?,?,?)",
+                        videoId, "PASS", "[]", "LOW", "PENDING");
         }
+    }
+
+    /**
+     * 转码进度快照：对外接口的唯一入口，**纯只读**。
+     *
+     * <p>需要登录，且只有视频作者本人、管理员或审核员可读，避免把他人视频的转码
+     * 状态与失败原因暴露出去。</p>
+     */
+    @Transactional(readOnly = true)
+    public Map<String, Object> snapshot(long videoId, CurrentUser current) {
+        Video v = videos.findById(videoId).orElseThrow(() -> new ApiException(ErrorCode.NOT_FOUND, "视频不存在"));
+        if (current == null) throw new ApiException(ErrorCode.UNAUTHORIZED, "请先登录");
+        boolean privileged = current.id() == v.getUserId()
+                || current.role() == Role.ADMIN || current.role() == Role.MODERATOR;
+        if (!privileged) throw new ApiException(ErrorCode.FORBIDDEN, "无权查看此视频的转码进度");
+        Map<String, Object> task = latestTask(videoId);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("videoId", videoId);
-        result.put("taskId", taskId);
+        result.put("taskId", ((Number) task.get("id")).longValue());
         result.put("quality", task.get("quality"));
-        result.put("status", status);
-        result.put("progress", progress);
+        result.put("status", String.valueOf(task.get("status")));
+        result.put("progress", ((Number) task.get("progress")).intValue());
         result.put("errorMsg", task.get("error_msg"));
         result.put("retryCount", task.get("retry_count"));
         result.put("videoStatus", v.getStatus().name());
         return result;
+    }
+
+    /** 取该视频最近一条转码任务；不存在时抛 NOT_FOUND。 */
+    private Map<String, Object> latestTask(long videoId) {
+        List<Map<String, Object>> tasks = jdbc.queryForList(
+                "SELECT * FROM transcode_tasks WHERE video_id=? ORDER BY id DESC LIMIT 1", videoId);
+        if (tasks.isEmpty()) throw new ApiException(ErrorCode.NOT_FOUND, "转码任务不存在");
+        return tasks.get(0);
     }
 
     /** 取该视频所属上传会话记录的封面地址；没有会话或未提交封面时返回 null。 */

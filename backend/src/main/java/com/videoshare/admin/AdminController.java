@@ -8,6 +8,7 @@ import com.videoshare.common.IdempotencyService;
 import com.videoshare.common.PageResult;
 import com.videoshare.user.Role;
 import com.videoshare.user.UserStatus;
+import jakarta.validation.constraints.Max;
 import java.util.Map;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -43,7 +44,7 @@ public class AdminController {
                                                                 @RequestParam(required = false) String status,
                                                                 @RequestParam(required = false) String riskLevel,
                                                                 @RequestParam(defaultValue = "1") int page,
-                                                                @RequestParam(defaultValue = "10") int pageSize) {
+                                                                @RequestParam(defaultValue = "10") @Max(100) int pageSize) {
         moderator(c);
         return ApiResponse.ok(service.reviews(status, riskLevel, page, pageSize));
     }
@@ -63,7 +64,7 @@ public class AdminController {
     public ApiResponse<PageResult<Map<String, Object>>> realNames(@AuthenticationPrincipal CurrentUser c,
                                                                   @RequestParam(required = false) String status,
                                                                   @RequestParam(defaultValue = "1") int page,
-                                                                  @RequestParam(defaultValue = "10") int pageSize) {
+                                                                  @RequestParam(defaultValue = "10") @Max(100) int pageSize) {
         moderator(c);
         return ApiResponse.ok(service.realNames(status, page, pageSize));
     }
@@ -83,7 +84,7 @@ public class AdminController {
                                                                 @RequestParam(required = false) String status,
                                                                 @RequestParam(required = false) String reason,
                                                                 @RequestParam(defaultValue = "1") int page,
-                                                                @RequestParam(defaultValue = "10") int pageSize) {
+                                                                @RequestParam(defaultValue = "10") @Max(100) int pageSize) {
         moderator(c);
         return ApiResponse.ok(service.reports(status, reason, page, pageSize));    }
 
@@ -103,7 +104,7 @@ public class AdminController {
                                                               @RequestParam(required = false) String role,
                                                               @RequestParam(required = false) String status,
                                                               @RequestParam(defaultValue = "1") int page,
-                                                              @RequestParam(defaultValue = "10") int pageSize) {
+                                                              @RequestParam(defaultValue = "10") @Max(100) int pageSize) {
         admin(c);
         return ApiResponse.ok(service.users(keyword, role, status, page, pageSize));
     }
@@ -128,7 +129,7 @@ public class AdminController {
     public ApiResponse<PageResult<Map<String, Object>>> videos(@AuthenticationPrincipal CurrentUser c,
                                                                @RequestParam(required = false) String status,
                                                                @RequestParam(defaultValue = "1") int page,
-                                                               @RequestParam(defaultValue = "10") int pageSize) {
+                                                               @RequestParam(defaultValue = "10") @Max(100) int pageSize) {
         moderator(c);
         return ApiResponse.ok(service.videos(status, page, pageSize));
     }
@@ -136,7 +137,7 @@ public class AdminController {
     @GetMapping("/audit-logs")
     public ApiResponse<PageResult<Map<String, Object>>> logs(@AuthenticationPrincipal CurrentUser c,
                                                              @RequestParam(defaultValue = "1") int page,
-                                                             @RequestParam(defaultValue = "15") int pageSize) {
+                                                             @RequestParam(defaultValue = "15") @Max(100) int pageSize) {
         admin(c);
         return ApiResponse.ok(service.auditLogs(page, pageSize));
     }

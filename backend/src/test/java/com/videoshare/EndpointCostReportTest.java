@@ -30,7 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
-@Import(CountingDataSourceConfiguration.class)
+@Import({CountingDataSourceConfiguration.class, SynchronousAsyncTestConfiguration.class})
 class EndpointCostReportTest {
 
     private static final int SEED_VIDEOS = 60;

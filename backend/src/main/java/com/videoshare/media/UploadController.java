@@ -67,9 +67,16 @@ public class UploadController {
         return ApiResponse.ok(Map.of("success", true));
     }
 
+    /**
+     * 转码进度查询：只读。
+     *
+     * <p>状态推进已移出 HTTP 层（由 {@link TranscodeWorker} 定时完成），因此这个 GET
+     * 不会再修改任何数据；同时要求登录且仅作者本人 / 管理员 / 审核员可读。</p>
+     */
     @GetMapping("/transcode/{videoId}/progress")
-    public ApiResponse<Map<String, Object>> progress(@PathVariable long videoId) {
-        return ApiResponse.ok(service.progress(videoId));
+    public ApiResponse<Map<String, Object>> progress(@PathVariable long videoId,
+                                                     @AuthenticationPrincipal CurrentUser c) {
+        return ApiResponse.ok(service.snapshot(videoId, c));
     }
 
     /** 把任意 JSON 数组规整成 {@code List<Map<String,Object>>}，避免未检查的强制转换。 */

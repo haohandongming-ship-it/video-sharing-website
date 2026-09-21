@@ -41,8 +41,11 @@ services:
       MINIO_ROOT_USER: ${MINIO_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_PASSWORD}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      # 9000（S3 API）需要被浏览器直连读取头像与封面，因此保留对外发布。
+      # 注意：对外可达时应当由反向代理终结 TLS，并使用强凭据。
+      - "${MINIO_API_BIND:-0.0.0.0}:9000:9000"
+      # 9001 是管理控制台，浏览器与业务都无需访问，绑定回环即可，避免管理面暴露到公网。
+      - "127.0.0.1:9001:9001"
     volumes:
       - minio_data:/data
 
@@ -94,7 +97,10 @@ services:
       JWT_PUBLIC_KEY_BASE64: ${JWT_PUBLIC_KEY_BASE64}
       DATA_ENCRYPTION_KEY_BASE64: ${DATA_ENCRYPTION_KEY_BASE64}
     ports:
-      - "8080:8080"
+      # 只发布到回环：对外入口是 nginx，容器间通过服务名 backend:8080 直连，不受影响。
+      # 若发布到 0.0.0.0，攻击者可绕过 nginx 直连并伪造 X-Forwarded-For，
+      # 使 AUTH_TRUST_PROXY_HEADERS=true 的按真实 IP 限流失效。宿主机调试仍可用 localhost:8080。
+      - "127.0.0.1:8080:8080"
     depends_on:
       mysql:
         condition: service_healthy

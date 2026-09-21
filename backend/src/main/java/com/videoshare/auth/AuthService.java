@@ -7,7 +7,6 @@ import com.videoshare.user.Role;
 import com.videoshare.user.User;
 import com.videoshare.user.UserRepository;
 import com.videoshare.user.UserStatus;
-import java.time.Duration;
 import java.util.Map;
 import org.springframework.core.env.Environment;
 import org.springframework.dao.DataAccessException;
@@ -28,10 +27,14 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AuthService {
 
+    /** 本地开发用的固定验证码，仅在 {@code app.auth.allow-fixed-sms-code=true} 时生效。 */
+    private static final String DEV_FIXED_SMS_CODE = "123456";
+
     private final UserRepository users;
     private final PasswordEncoder encoder;
     private final JwtService jwt;
     private final RefreshTokenService refresh;
+    private final TokenDenylist denylist;
     private final StringRedisTemplate redis;
     private final AuthProperties props;
     private final JdbcTemplate jdbc;
@@ -39,12 +42,13 @@ public class AuthService {
     private final boolean production;
 
     public AuthService(UserRepository users, PasswordEncoder encoder, JwtService jwt, RefreshTokenService refresh,
-                       StringRedisTemplate redis, AuthProperties props, JdbcTemplate jdbc,
+                       TokenDenylist denylist, StringRedisTemplate redis, AuthProperties props, JdbcTemplate jdbc,
                        NamedParameterJdbcTemplate named, Environment env) {
         this.users = users;
         this.encoder = encoder;
         this.jwt = jwt;
         this.refresh = refresh;
+        this.denylist = denylist;
         this.redis = redis;
         this.props = props;
         this.jdbc = jdbc;
@@ -112,11 +116,9 @@ public class AuthService {
     }
 
     public void logout(CurrentUser user) {
-        try {
-            redis.opsForValue().set("auth:jti:denylist:" + user.jti(), "1", Duration.ofSeconds(props.accessTtlSeconds()));
-        } catch (DataAccessException ex) {
-            if (production) throw new ApiException(ErrorCode.INTERNAL, "认证会话服务暂时不可用");
-        }
+        // 吊销交给 TokenDenylist：非生产环境有本地降级黑名单，没有 Redis 时登出同样生效；
+        // 生产环境 Redis 不可用会抛出业务错误，而不是返回「成功」却留下可用的令牌。
+        denylist.revoke(user.jti());
         refresh.revokeAll(user.id());
     }
 
@@ -153,13 +155,24 @@ public class AuthService {
         return new AuthDtos.AuthData(token.value(), props.accessTtlSeconds(), profile(user));
     }
 
+    /**
+     * 校验短信验证码。
+     *
+     * <p>Redis 不可用时的降级行为由显式开关 {@code app.auth.allow-fixed-sms-code} 决定，
+     * 而**不再**由「当前不是 prod」隐式决定：此前任何未设置 profile 的部署都会静默接受
+     * 固定验证码 {@value #DEV_FIXED_SMS_CODE}，等于开放「用该码登录任意已注册手机号」的后门。
+     * 现在默认 fail-closed，只有本地开发显式打开才走固定码。</p>
+     */
     private boolean validSms(String phone, String code) {
+        if (code == null || code.isBlank()) return false;
         try {
             String value = redis.opsForValue().get("sms:code:" + phone);
             return code.equals(value);
         } catch (DataAccessException ex) {
-            if (production) throw new ApiException(ErrorCode.INTERNAL, "验证码服务暂时不可用");
-            return "123456".equals(code);
+            if (!props.allowFixedSmsCode()) {
+                throw new ApiException(ErrorCode.INTERNAL, "验证码服务暂时不可用");
+            }
+            return DEV_FIXED_SMS_CODE.equals(code);
         }
     }
 

@@ -70,6 +70,8 @@ export default function VideoPlayerPage() {
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [showResumeHint, setShowResumeHint] = useState(false);
   const viewCounted = useRef(false);
+  /** 自动连播的延时句柄：切换视频或卸载时必须撤销，否则会把已导航的用户强行跳走。 */
+  const autoplayTimer = useRef<number | null>(null);
 
   /** 断点续播：读取本地记忆进度（文档 5.6 记忆播放） */
   const startTime = useMemo(() => {
@@ -140,8 +142,28 @@ export default function VideoPlayerPage() {
       tone: 'info',
       action: { label: '立即播放', onClick: () => navigate(`/video/${next.id}`) },
     });
-    window.setTimeout(() => navigate(`/video/${next.id}`), 2600);
+    // 先撤销上一个待执行的连播，避免连续触发时叠加多个定时器。
+    if (autoplayTimer.current !== null) window.clearTimeout(autoplayTimer.current);
+    autoplayTimer.current = window.setTimeout(() => {
+      autoplayTimer.current = null;
+      navigate(`/video/${next.id}`);
+    }, 2600);
   }, [autoplayNext, navigate, related, toast]);
+
+  /**
+   * 切换视频或卸载时撤销待执行的自动连播。
+   * 此前定时器没有句柄，播完后的 2.6 秒内用户若自行点开别的视频或离开页面，
+   * 仍会被强制跳转到 related[0]。
+   */
+  useEffect(
+    () => () => {
+      if (autoplayTimer.current !== null) {
+        window.clearTimeout(autoplayTimer.current);
+        autoplayTimer.current = null;
+      }
+    },
+    [videoId],
+  );
 
   const clearResume = () => {
     setShowResumeHint(false);

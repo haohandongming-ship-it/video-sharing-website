@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Bell, CheckCheck, Circle } from 'lucide-react';
 import { cn } from '@/lib/cn';
@@ -20,7 +20,17 @@ export function NotificationPanel({ open, onClose }: { open: boolean; onClose: (
   const markStoreRead = useNotificationStore((s) => s.markRead);
   const realtimeStatus = useNotificationStore((s) => s.realtimeStatus);
 
-  const items = storeItems.length > 0 ? storeItems.slice(0, 8) : (data?.items ?? []);
+  /*
+   * 服务端列表是事实来源；实时推送来的通知可能还没被下一次拉取覆盖，按 id 去重后置于最前。
+   * 此前是「本地有内容就整块用本地」，导致收到一条推送之后，服务端的分页与已读状态
+   * 就再也不会生效（面板永久显示那份本地快照）。
+   */
+  const items = useMemo(() => {
+    const server = data?.items ?? [];
+    const seen = new Set(server.map((item) => item.id));
+    const fresh = storeItems.filter((item) => !seen.has(item.id));
+    return [...fresh, ...server].slice(0, 8);
+  }, [data?.items, storeItems]);
 
   useEffect(() => {
     if (data?.unreadCount !== undefined && storeItems.length === 0) setUnread(data.unreadCount);

@@ -36,4 +36,26 @@ describe('真实 HTTP 错误处理', () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async () => new Response(null, { status: 401 })));
     await expect(http.get('/api/v1/users/me', { auth: true })).rejects.toMatchObject({ status: 401 });
   });
+
+  it('绝对 URL 指向第三方域时不携带平台凭证（相对路径仍然携带）', async () => {
+    authBridge.setSession('private-platform-token', null);
+    // 每次调用都要返回**新的** Response：Response 的 body 只能被读取一次，
+    // 复用同一实例会让第二次请求在 response.text() 处抛错。
+    const fetchMock = vi.fn().mockImplementation(async () =>
+      new Response(JSON.stringify({ code: 0, message: 'success', data: {} }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    // 第三方域：既不带 Authorization，也不带 Cookie。
+    await http.get('https://evil.example.com/collect');
+    const untrusted = fetchMock.mock.calls[0][1] as RequestInit;
+    expect(new Headers(untrusted.headers).has('Authorization')).toBe(false);
+    expect(untrusted.credentials).toBe('omit');
+
+    // 相对路径走同源反代，凭证照常携带。
+    await http.get('/api/v1/users/me');
+    const trusted = fetchMock.mock.calls[1][1] as RequestInit;
+    expect(new Headers(trusted.headers).get('Authorization')).toBe('Bearer private-platform-token');
+    expect(trusted.credentials).toBe('include');
+  });
 });

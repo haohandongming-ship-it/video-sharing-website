@@ -1,5 +1,6 @@
 import { QueryClient } from '@tanstack/react-query';
 import { ApiError } from '@/api/client';
+import { LoginRequiredError } from '@/lib/errors';
 import { useUiStore } from '@/stores/uiStore';
 import { authBridge } from '@/api/authBridge';
 
@@ -25,6 +26,8 @@ export const queryClient = new QueryClient({
     mutations: {
       retry: 0,
       onError: (error) => {
+        // 未登录中断：requireLoginToast 已经给过中文提示，这里跳过，避免再弹一条英文错误。
+        if (error instanceof LoginRequiredError) return;
         // 网络异常：顶部细条提示 + 自动重试，不打断用户操作（文档 12.2）
         const message = error instanceof Error ? error.message : '操作失败，请稍后重试';
         useUiStore.getState().toast({ title: message, tone: 'error' });

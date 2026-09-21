@@ -6,9 +6,15 @@ import type { ReactNode } from 'react';
 import { authApi } from '@/api/auth';
 import { authBridge } from '@/api/authBridge';
 import { videoApi } from '@/api/videos';
+import { SEARCH_HISTORY_KEY } from '@/lib/constants';
+import { LoginRequiredError } from '@/lib/errors';
+import { storage } from '@/lib/storage';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
+import { usePlayerStore } from '@/stores/playerStore';
+import { useUiStore } from '@/stores/uiStore';
 import { queryClient } from '@/app/queryClient';
+import { registerSessionCleanup } from '@/app/sessionCleanup';
 import { useDeleteComment } from '@/hooks/useApi';
 import { JsonLd } from '@/components/ui/JsonLd';
 import { ReportDialog } from '@/components/video/ReportDialog';
@@ -144,5 +150,57 @@ describe('测试报告缺陷回归', () => {
     await waitFor(() => expect(detail).toHaveBeenCalledWith(target.id));
     await waitFor(() => expect(screen.getByText(target.title)).toBeInTheDocument());
     expect(screen.queryByText(first.title)).not.toBeInTheDocument();
+  });
+
+  /**
+   * 回归 SEC-09：登出必须清掉「按设备存储」的个人痕迹。
+   *
+   * 播放记忆与搜索历史都不带账号维度：若登出不清，同一台设备换账号后新用户会看到
+   * 上一用户的「继续观看」进度与搜索词。这里同时断言不过度清理——音量等纯偏好应保留。
+   */
+  it('logout clears device-local play progress and search history but keeps preferences', async () => {
+    // 生产接线在 main.tsx；测试不加载它，因此在此显式注册一次。
+    registerSessionCleanup();
+    const session = await authApi.loginByPassword({ account: 'laowang', password: '123456' });
+    useAuthStore.setState({ user: session.user, accessToken: session.accessToken, status: 'authenticated', hasSession: true });
+    authBridge.setSession(session.accessToken, session.user);
+    vi.spyOn(authApi, 'logout').mockResolvedValue({ success: true });
+
+    // 造出「上一用户」留下的痕迹：播放记忆（state + 分散落盘的 vs-progress:<id>）与搜索历史。
+    usePlayerStore.setState({ volume: 0.3 });
+    usePlayerStore.getState().recordProgress(4242, 30, 120, { force: true });
+    storage.set(SEARCH_HISTORY_KEY, ['上一用户的搜索词']);
+    expect(usePlayerStore.getState().memory[4242]).toBeDefined();
+    expect(localStorage.getItem('vs-progress:4242')).not.toBeNull();
+    expect(storage.get<string[]>(SEARCH_HISTORY_KEY, [])).toHaveLength(1);
+
+    await useAuthStore.getState().logout();
+
+    expect(usePlayerStore.getState().memory).toEqual({});
+    expect(localStorage.getItem('vs-progress:4242')).toBeNull();
+    expect(storage.get<string[]>(SEARCH_HISTORY_KEY, [])).toEqual([]);
+    // 纯偏好不属于个人痕迹，不应被清掉。
+    expect(usePlayerStore.getState().volume).toBe(0.3);
+  });
+
+  /**
+   * 回归 SEC-15：未登录中断不应重复弹提示。
+   *
+   * 交互类 mutation 在 onMutate 里已弹出中文提示「请先登录后再操作」，
+   * 若中断错误继续走全局 onError，用户会再看到一条英文 `unauthorized`。
+   */
+  it('未登录中断只提示一次中文，不再重复弹英文错误', () => {
+    const toast = vi.spyOn(useUiStore.getState(), 'toast');
+    // 直接驱动 queryClient 上真实配置的全局 onError。
+    const onError = queryClient.getDefaultOptions().mutations?.onError as (error: unknown) => void;
+    expect(typeof onError).toBe('function');
+
+    onError(new LoginRequiredError());
+    expect(toast).not.toHaveBeenCalled();
+
+    // 其它错误照常提示。
+    onError(new Error('网络异常'));
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith({ title: '网络异常', tone: 'error' });
   });
 });

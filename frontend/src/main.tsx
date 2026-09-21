@@ -1,6 +1,7 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './app/App';
+import { registerSessionCleanup } from './app/sessionCleanup';
 import { useAuthStore, usePlayerStore, useUiStore } from './stores';
 import './index.css';
 
@@ -27,6 +28,9 @@ async function hydrateStores(): Promise<void> {
 
 const container = document.getElementById('root');
 if (!container) throw new Error('缺少 #root 挂载节点');
+
+// 必须在任何登出/会话失效可能发生之前注册：清理播放记忆与搜索历史等设备本地痕迹。
+registerSessionCleanup();
 
 if (import.meta.env.DEV) {
   // 开发期诊断探针：便于在浏览器控制台/自动化脚本中检查会话还原链路

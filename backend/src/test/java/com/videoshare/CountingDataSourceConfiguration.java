@@ -33,15 +33,27 @@ class CountingDataSourceConfiguration {
         };
     }
 
-    /** 统计 prepareStatement/createStatement 次数；其余调用原样透传。 */
+    /**
+     * 统计 prepareStatement/createStatement 次数；其余调用原样透传。
+     *
+     * <p><b>只统计「发起测量的那个线程」的语句。</b> 计数器原先是不区分线程的全局值，
+     * 而 {@code TranscodeWorker} 是 {@code @Scheduled(fixedDelay = 1s)} 的后台线程，
+     * 它每个 tick 都会 prepareStatement（有 RUNNING 任务时还有若干 UPDATE/INSERT）。
+     * 一旦它的 tick 落在测量窗口内，{@code QueryCountGuardTest} 的「SQL 条数不随页大小
+     * 增长」断言就会随机失败。按线程过滤后，后台线程的语句不再计入，护栏结果稳定可复现。</p>
+     */
     static class CountingDataSource extends DelegatingDataSource {
         private static final AtomicInteger STATEMENTS = new AtomicInteger();
+
+        /** 发起测量的线程；仅该线程的语句计入。 */
+        private static volatile Thread measuredThread;
 
         CountingDataSource(DataSource delegate) {
             super(delegate);
         }
 
         static void reset() {
+            measuredThread = Thread.currentThread();
             STATEMENTS.set(0);
         }
 
@@ -62,7 +74,8 @@ class CountingDataSourceConfiguration {
         private static Connection wrap(Connection connection) {
             return (Connection) Proxy.newProxyInstance(CountingDataSource.class.getClassLoader(),
                     new Class<?>[]{Connection.class}, (proxy, method, args) -> {
-                        if (method.getName().startsWith("prepareStatement") || "createStatement".equals(method.getName())) {
+                        if (Thread.currentThread() == measuredThread
+                                && (method.getName().startsWith("prepareStatement") || "createStatement".equals(method.getName()))) {
                             STATEMENTS.incrementAndGet();
                         }
                         try {

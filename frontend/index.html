@@ -9,19 +9,12 @@
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <title>光影 · 视频分享平台</title>
-    <script>
-      // 主题预置：在首屏渲染前确定暗色模式，避免亮暗切换闪烁（验收标准 19.4）
-      (function () {
-        try {
-          var raw = localStorage.getItem('vs-ui-preference');
-          var theme = raw ? JSON.parse(raw).state.theme : 'system';
-          var dark = theme === 'dark' || (theme !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
-          var root = document.documentElement;
-          root.classList.toggle('dark', dark);
-          root.style.colorScheme = dark ? 'dark' : 'light';
-        } catch (e) {}
-      })();
-    </script>
+    <!--
+      主题预置：必须在首屏绘制前执行，因此是阻塞式经典脚本（不能加 defer/async）。
+      放在 public/ 下由同源文件加载，nginx 的 CSP 才能收紧为 script-src 'self'，
+      不必为它放开 'unsafe-inline'。内容见 public/theme-init.js。
+    -->
+    <script src="/theme-init.js"></script>
   </head>
   <body>
     <div id="root"></div>

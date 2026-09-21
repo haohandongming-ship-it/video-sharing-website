@@ -1,14 +1,19 @@
 /**
  * 登录 / 注册 / 忘记密码 —— 文档 3.1、13.1
  * 主路径为手机号 + 验证码；账号密码与第三方登录为备选。
- * 演示环境内置 4 个演示账号，便于评审快速切换角色权限。
+ *
+ * 演示账号快捷登录**只在 Mock 数据层开启（VITE_USE_MOCK=true）时渲染**：
+ * 这些口令是公开弱口令，生产构建必须既看不到入口、也不把它们打进 bundle。
+ * 账号表放在 `@/mocks/demoAccounts`，由 `USE_MOCK &&` 分支引用，构建期即被剔除。
  */
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, Lock, Mail, Phone, ShieldCheck, User, UserRound } from 'lucide-react';
 import { Button, Divider, Input, Switch, Tabs, type TabItem } from '@/components/ui';
 import { authApi } from '@/api/auth';
+import { USE_MOCK } from '@/api/config';
 import { APP_NAME, APP_SLOGAN } from '@/lib/constants';
+import { DEMO_ACCOUNTS } from '@/mocks/demoAccounts';
 import { useAuthStore } from '@/stores/authStore';
 import { useUiStore } from '@/stores/uiStore';
 
@@ -35,13 +40,6 @@ const FEATURES = [
   { title: '长视频与短视频同站', description: '按栏目、榜单与订阅组织内容，进度自动记忆。' },
   { title: '创作者后台上传即用', description: '分片断点续传、转码进度可见，发布状态透明。' },
   { title: '可关闭的个性化推荐', description: '关闭后仅展示热门与时间线，另提供青少年模式。' },
-];
-
-const DEMO_ACCOUNTS = [
-  { account: 'admin', password: '123456', label: '管理员', hint: '审核与用户管理' },
-  { account: 'moderator', password: '123456', label: '审核员', hint: '审核队列与举报' },
-  { account: 'laowang', password: '123456', label: '创作者', hint: '上传与数据看板' },
-  { account: 'newbie', password: '123456', label: '新用户', hint: '先审后发策略' },
 ];
 
 const PHONE_PATTERN = /^1[3-9]\d{9}$/;
@@ -81,7 +79,8 @@ function usernameHint(username: string): string {
   if (!value) return '用户名注册后不可修改，请谨慎填写';
   if (value.length < 3) return `还需 ${3 - value.length} 个字符`;
   if (!/^[A-Za-z0-9_]+$/.test(value)) return '仅支持字母、数字与下划线';
-  if (DEMO_ACCOUNTS.some((demo) => demo.account === value)) return '该用户名已被占用';
+  // 演示账号占用提示只在 Mock 模式下有意义：生产环境的这些用户名并未被占用。
+  if (USE_MOCK && DEMO_ACCOUNTS.some((demo) => demo.account === value)) return '该用户名已被占用';
   return '该用户名可以使用';
 }
 
@@ -660,33 +659,35 @@ export default function LoginPage({ initialMode = 'login' }: LoginPageProps) {
               </form>
             )}
 
-            <div className="mt-5 border-t border-line pt-4">
-              <p className="text-[11px] font-medium text-fg-subtle">演示账号快捷登录（密码均为 123456）</p>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                {DEMO_ACCOUNTS.map((demo) => (
-                  <Button
-                    key={demo.account}
-                    variant="outline"
-                    size="sm"
-                    fullWidth
-                    aria-label={`以演示账号 ${demo.label} ${demo.account} 登录`}
-                    className="h-auto flex-col items-start gap-0 py-2 text-left"
-                    onClick={() => {
-                      setAccount(demo.account);
-                      setPassword(demo.password);
-                      setMethod('password');
-                      notify('演示账号', `${demo.label} · ${demo.account}，正在登录`);
-                      void submitLogin(demo.account, demo.password, false);
-                    }}
-                  >
-                    <span className="text-[13px] font-medium">
-                      {demo.label} · {demo.account}
-                    </span>
-                    <span className="text-[11px] font-normal text-fg-subtle">{demo.hint}</span>
-                  </Button>
-                ))}
+            {USE_MOCK && (
+              <div className="mt-5 border-t border-line pt-4">
+                <p className="text-[11px] font-medium text-fg-subtle">演示账号快捷登录（密码均为 123456）</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  {DEMO_ACCOUNTS.map((demo) => (
+                    <Button
+                      key={demo.account}
+                      variant="outline"
+                      size="sm"
+                      fullWidth
+                      aria-label={`以演示账号 ${demo.label} ${demo.account} 登录`}
+                      className="h-auto flex-col items-start gap-0 py-2 text-left"
+                      onClick={() => {
+                        setAccount(demo.account);
+                        setPassword(demo.password);
+                        setMethod('password');
+                        notify('演示账号', `${demo.label} · ${demo.account}，正在登录`);
+                        void submitLogin(demo.account, demo.password, false);
+                      }}
+                    >
+                      <span className="text-[13px] font-medium">
+                        {demo.label} · {demo.account}
+                      </span>
+                      <span className="text-[11px] font-normal text-fg-subtle">{demo.hint}</span>
+                    </Button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             <p className="mt-4 text-[11px] leading-relaxed text-fg-subtle">{COMPLIANCE}</p>
           </div>

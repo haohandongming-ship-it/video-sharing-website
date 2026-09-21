@@ -19,16 +19,21 @@ name: video-sharing-platform
 services:
   mysql:
     ports:
-      - "${MYSQL_PORT:-13306}:3306"
+      # 绑定回环：只有本机的后端（dev-infra 下在宿主机用 Maven 运行）需要连它，
+      # 发布到 0.0.0.0 会让同一网络内的其他设备直接访问数据库。
+      - "127.0.0.1:${MYSQL_PORT:-13306}:3306"
 
   redis:
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
 
   minio:
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      # 9000 保留对外发布：浏览器需要直连它读取头像与封面，局域网设备访问前端时同样如此。
+      # 若要改为仅本机可用，把 MINIO_API_BIND 设为 127.0.0.1（届时局域网设备将看不到图片）。
+      - "${MINIO_API_BIND:-0.0.0.0}:${MINIO_PORT:-9000}:9000"
+      # 控制台仅管理用途，绑定回环。
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
 
   rocketmq-nameserver:
     profiles: ["mq"]

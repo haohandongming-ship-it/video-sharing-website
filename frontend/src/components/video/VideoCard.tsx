@@ -1,6 +1,6 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Clock3, Eye, ListVideo, Play } from 'lucide-react';
+import { Clock3, Eye, Film, ListVideo, Play } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { formatCount, formatDuration, formatRelative } from '@/lib/format';
 import type { VideoSummary } from '@/api/types';
@@ -53,6 +53,8 @@ export const VideoCard = memo(function VideoCard({
 }: VideoCardProps) {
   const progress = progressOf(video);
   const isShort = video.videoType === 'SHORT';
+  /** 封面加载失败时降级为占位块，避免列表里出现浏览器破图图标。 */
+  const [coverFailed, setCoverFailed] = useState(false);
   const to = `${isShort ? '/shorts' : `/video/${video.id}`}${isShort ? `?v=${video.id}` : ''}`;
 
   const thumb = (
@@ -65,13 +67,20 @@ export const VideoCard = memo(function VideoCard({
         layout === 'poster' && 'aspect-video w-full',
       )}
     >
-      <img
-        src={video.coverUrl}
-        alt={video.title}
-        loading="lazy"
-        decoding="async"
-        className="size-full object-cover transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/thumb:scale-[1.03]"
-      />
+      {coverFailed ? (
+        <div className="flex size-full items-center justify-center text-fg-subtle">
+          <Film className="size-6" aria-hidden />
+        </div>
+      ) : (
+        <img
+          src={video.coverUrl}
+          alt={video.title}
+          loading="lazy"
+          decoding="async"
+          onError={() => setCoverFailed(true)}
+          className="size-full object-cover transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] group-hover/thumb:scale-[1.03]"
+        />
+      )}
       {/* 时长角标 */}
       <span className="absolute right-1.5 bottom-1.5 rounded-[4px] bg-black/78 px-1.5 py-0.5 text-[11px] font-medium tabular-nums text-white">
         {durationLabel(video.duration)}

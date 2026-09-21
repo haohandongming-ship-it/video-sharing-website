@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Heart, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { formatCount, formatRelative } from '@/lib/format';
+import { temporaryNumericId } from '@/lib/id';
 import { queryKeys } from '@/lib/queryKeys';
 import { feedApi } from '@/api/feeds';
 import type { CommentItem, PageData } from '@/api/types';
@@ -99,7 +100,7 @@ function FeedComments({ feedId, commentCount }: { feedId: number; commentCount: 
       const prev = client.getQueryData<PageData<CommentItem>>(listKey);
       const user = useAuthStore.getState().user;
       const optimistic: CommentItem = {
-        id: -Date.now(),
+        id: temporaryNumericId(),
         videoId: feedId,
         parentId: null,
         rootId: null,

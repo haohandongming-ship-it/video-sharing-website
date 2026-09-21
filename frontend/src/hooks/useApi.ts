@@ -31,6 +31,8 @@ import type {
   VideoQuery,
   VideoSummary,
 } from '@/api/types';
+import { LoginRequiredError } from '@/lib/errors';
+import { temporaryNumericId } from '@/lib/id';
 import { queryKeys } from '@/lib/queryKeys';
 import { useUiStore } from '@/stores/uiStore';
 import { useAuthStore } from '@/stores/authStore';
@@ -215,7 +217,7 @@ export function useVideoInteractions(videoId: number) {
   const like = useMutation({
     mutationFn: (active: boolean) => videoApi.like(videoId, active),
     onMutate: async (active) => {
-      if (!requireLoginToast()) throw new Error('unauthorized');
+      if (!requireLoginToast()) throw new LoginRequiredError();
       await client.cancelQueries({ queryKey: detailKey });
       const prev = client.getQueryData<VideoDetail>(detailKey);
       const delta = prev ? (active === prev.liked ? 0 : active ? 1 : -1) : 0;
@@ -238,7 +240,7 @@ export function useVideoInteractions(videoId: number) {
   const favorite = useMutation({
     mutationFn: (active: boolean) => videoApi.favorite(videoId, active),
     onMutate: async (active) => {
-      if (!requireLoginToast()) throw new Error('unauthorized');
+      if (!requireLoginToast()) throw new LoginRequiredError();
       await client.cancelQueries({ queryKey: detailKey });
       const prev = client.getQueryData<VideoDetail>(detailKey);
       patchDetail({ favorited: active });
@@ -259,7 +261,7 @@ export function useVideoInteractions(videoId: number) {
   const subscribe = useMutation({
     mutationFn: (active: boolean) => videoApi.subscribe(videoId, active),
     onMutate: async (active) => {
-      if (!requireLoginToast()) throw new Error('unauthorized');
+      if (!requireLoginToast()) throw new LoginRequiredError();
       const prev = client.getQueryData<VideoDetail>(detailKey);
       patchDetail({ subscribed: active });
       return { prev };
@@ -272,7 +274,7 @@ export function useVideoInteractions(videoId: number) {
   const dislike = useMutation({
     mutationFn: (active: boolean) => videoApi.dislike(videoId, active),
     onMutate: async (active) => {
-      if (!requireLoginToast()) throw new Error('unauthorized');
+      if (!requireLoginToast()) throw new LoginRequiredError();
       const prev = client.getQueryData<VideoDetail>(detailKey);
       patchDetail({ disliked: active, liked: active ? false : prev?.liked });
       return { prev };
@@ -340,12 +342,12 @@ export function usePostComment(videoId: number, query: CommentQuery = {}) {
   return useMutation({
     mutationFn: (content: string) => videoApi.postComment(videoId, content),
     onMutate: async (content) => {
-      if (!requireLoginToast()) throw new Error('unauthorized');
+      if (!requireLoginToast()) throw new LoginRequiredError();
       await client.cancelQueries({ queryKey: key });
       const prev = client.getQueryData<PageData<CommentItem>>(key);
       const user = useAuthStore.getState().user;
       const optimistic: CommentItem = {
-        id: -Date.now(),
+        id: temporaryNumericId(),
         videoId,
         parentId: null,
         rootId: null,
@@ -514,7 +516,7 @@ export function useToggleFollow() {
   return useMutation({
     mutationFn: ({ userId, active }: { userId: number; active: boolean }) => userApi.follow(userId, active),
     onMutate: async ({ userId, active }) => {
-      if (!requireLoginToast()) throw new Error('unauthorized');
+      if (!requireLoginToast()) throw new LoginRequiredError();
       const key = queryKeys.user.profile(userId);
       await client.cancelQueries({ queryKey: key });
       const prev = client.getQueryData(key);

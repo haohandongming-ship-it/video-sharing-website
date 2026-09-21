@@ -3,6 +3,16 @@ spring:
     # 开发环境也使用文件数据库，重启后用户、上传视频和审核状态不会被示例种子覆盖。
     url: jdbc:h2:file:./data/video_platform;MODE=MySQL;AUTO_SERVER=TRUE;DATABASE_TO_LOWER=TRUE
 app:
+  cors:
+    # 开发环境扩展为局域网范围，便于同一网络下的手机/另一台电脑访问前端开发服务器。
+    # 生产环境严禁使用这些通配符（见 application.yml 默认值）。
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://10.*:5173,http://172.16.*:5173,http://172.17.*:5173,http://172.18.*:5173,http://172.19.*:5173,http://172.20.*:5173,http://172.21.*:5173,http://172.22.*:5173,http://172.23.*:5173,http://172.24.*:5173,http://172.25.*:5173,http://172.26.*:5173,http://172.27.*:5173,http://172.28.*:5173,http://172.29.*:5173,http://172.30.*:5173,http://172.31.*:5173,http://192.168.*:5173}
+  auth:
+    # 本地开发便利开关：dev 下没有 Redis，允许用固定验证码 123456 通过短信校验，
+    # 便于在零基础设施下走通登录流程。
+    # 仅 dev 启用；dev-infra 有真实 Redis，不需要该开关，故保持默认关闭。
+    # **任何对外可达的环境都必须保持 false。**
+    allow-fixed-sms-code: true
   storage:
     # 本地开发默认使用固定签名密钥，重启后尚未完成的分片上传地址仍然有效；部署时由环境变量覆盖。
     signing-secret: ${STORAGE_SIGNING_SECRET:video-platform-dev-storage-signing-secret}

@@ -39,6 +39,29 @@ export const storage = {
   remove(key: string, kind: StorageKind = 'local'): void {
     getBackend(kind)?.removeItem(PREFIX + key);
   },
+  /**
+   * 移除所有以 `prefix` 开头的键。
+   *
+   * <p>用于清理「按 id 分散写入」的数据，例如播放记忆的 `progress:<videoId>`：
+   * 这类键数量随观看过的视频增长，无法靠单个 `remove` 清干净，登出时若不处理
+   * 会把上一用户的观看痕迹留在设备上。</p>
+   */
+  removeByPrefix(prefix: string, kind: StorageKind = 'local'): void {
+    const backend = getBackend(kind);
+    if (!backend) return;
+    const full = PREFIX + prefix;
+    // 先收集再删除：边遍历边 removeItem 会因索引位移而漏掉键。
+    const doomed: string[] = [];
+    try {
+      for (let i = 0; i < backend.length; i++) {
+        const key = backend.key(i);
+        if (key !== null && key.startsWith(full)) doomed.push(key);
+      }
+      for (const key of doomed) backend.removeItem(key);
+    } catch {
+      /* 隐私模式或超配额时静默降级 */
+    }
+  },
 };
 
 interface PersistStateStorage {

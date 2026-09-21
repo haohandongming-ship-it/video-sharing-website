@@ -3,6 +3,14 @@ import type { Quality, ReportReason, VideoType } from '@/api/types';
 export const APP_NAME = '光影';
 export const APP_SLOGAN = '看见每一种表达';
 
+/**
+ * 搜索历史在 localStorage 中的键（`lib/storage` 会自动加上 `vs-` 前缀）。
+ *
+ * <p>搜索历史按**设备**存储、不带账号维度，属于个人痕迹，因此登出时必须清理
+ * （见 `app/sessionCleanup.ts`）。抽成常量是为了让写入方与清理方共用同一来源。</p>
+ */
+export const SEARCH_HISTORY_KEY = 'search-history';
+
 /** 上传限制（文档 10.1） */
 export const UPLOAD_LIMITS = {
   partSize: 8 * 1024 * 1024,

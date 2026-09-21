@@ -46,6 +46,14 @@ public class VideoController {
 
     private static final Pattern RANGE = Pattern.compile("bytes=(\\d*)-(\\d*)");
 
+    /**
+     * 搜索页的推荐关键词。
+     *
+     * <p>目前是固定的占位词，不是基于搜索热度或用户历史生成的建议 —— 真实建议需要单独的
+     * 统计链路，属于产品决策。集中在这里是为了让「这是占位实现」一眼可见。</p>
+     */
+    private static final List<String> SEARCH_SUGGESTIONS = List.of("架构设计", "性能优化", "旅行", "美食");
+
     private final VideoService service;
     private final VideoCoverService coverService;
     private final DanmakuService danmaku;
@@ -154,6 +162,7 @@ public class VideoController {
                                                    @RequestParam(defaultValue = "1") @Min(1) int page,
                                                    @RequestParam(defaultValue = "20") @Min(1) @Max(100) int pageSize,
                                                    @AuthenticationPrincipal CurrentUser current) {
+        long startedAt = System.nanoTime();
         PageResult<Map<String, Object>> data = service.discover(q, null, categoryId, sort, page, pageSize, current, duration, dateRange);
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("items", data.items());
@@ -161,8 +170,12 @@ public class VideoController {
         result.put("page", data.page());
         result.put("pageSize", data.pageSize());
         result.put("hasMore", data.hasMore());
-        result.put("suggestions", List.of("架构设计", "性能优化", "旅行", "美食"));
-        result.put("costMs", 1);
+        result.put("suggestions", SEARCH_SUGGESTIONS);
+        /*
+         * 这里返回的是**真实**耗时。此前硬编码为 1，而前端搜索页会把它显示成
+         * 「耗时 1ms」，等于向用户展示一个假指标。至少取 1，避免显示 0ms 造成误解。
+         */
+        result.put("costMs", Math.max(1L, (System.nanoTime() - startedAt) / 1_000_000L));
         return ApiResponse.ok(result);
     }
 

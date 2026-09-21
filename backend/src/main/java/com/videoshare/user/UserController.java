@@ -108,10 +108,16 @@ public class UserController {
         return ApiResponse.ok(service.profile(id, c));
     }
 
+    /*
+     * 分页参数约定：只对「过大」的 pageSize 做拒绝（@Max），不对过小/零值做拒绝。
+     * 这是项目既有且被测试固化的行为（PlatformIntegrationTest.paginationAndMalformedInputDoNotCauseServerErrors
+     * 断言 pageSize=-5 / page=0 仍返回 200，由服务层钳制到合法区间），目的是让畸形的分页参数
+     * 不至于把请求打成错误。@Max 挡住的是真正有资源含义的一侧。
+     */
     @GetMapping("/users/{id}/videos")
     public ApiResponse<PageResult<Map<String, Object>>> videos(@PathVariable long id,
                                                                @RequestParam(defaultValue = "1") int page,
-                                                               @RequestParam(defaultValue = "12") int pageSize,
+                                                               @RequestParam(defaultValue = "12") @Max(100) int pageSize,
                                                                @AuthenticationPrincipal CurrentUser c) {
         return ApiResponse.ok(service.videos(id, page, pageSize, c == null ? null : c.id()));
     }
@@ -119,7 +125,7 @@ public class UserController {
     @GetMapping("/users/{id}/favorites")
     public ApiResponse<PageResult<Map<String, Object>>> favorites(@PathVariable long id,
                                                                   @RequestParam(defaultValue = "1") int page,
-                                                                  @RequestParam(defaultValue = "12") int pageSize,
+                                                                  @RequestParam(defaultValue = "12") @Max(100) int pageSize,
                                                                   @AuthenticationPrincipal CurrentUser c) {
         return ApiResponse.ok(service.favorites(id, page, pageSize, c == null ? null : c.id()));
     }
@@ -127,7 +133,7 @@ public class UserController {
     @GetMapping("/users/{id}/followers")
     public ApiResponse<PageResult<Map<String, Object>>> followers(@PathVariable long id,
                                                                   @RequestParam(defaultValue = "1") int page,
-                                                                  @RequestParam(defaultValue = "20") int pageSize,
+                                                                  @RequestParam(defaultValue = "20") @Max(100) int pageSize,
                                                                   @AuthenticationPrincipal CurrentUser c) {
         return ApiResponse.ok(service.follows(id, true, page, pageSize, c == null ? null : c.id()));
     }
@@ -135,7 +141,7 @@ public class UserController {
     @GetMapping("/users/{id}/following")
     public ApiResponse<PageResult<Map<String, Object>>> following(@PathVariable long id,
                                                                   @RequestParam(defaultValue = "1") int page,
-                                                                  @RequestParam(defaultValue = "20") int pageSize,
+                                                                  @RequestParam(defaultValue = "20") @Max(100) int pageSize,
                                                                   @AuthenticationPrincipal CurrentUser c) {
         return ApiResponse.ok(service.follows(id, false, page, pageSize, c == null ? null : c.id()));
     }
@@ -151,13 +157,13 @@ public class UserController {
     public ApiResponse<PageResult<Map<String, Object>>> creatorVideos(@AuthenticationPrincipal CurrentUser c,
                                                                       @RequestParam(required = false) String status,
                                                                       @RequestParam(defaultValue = "1") int page,
-                                                                      @RequestParam(defaultValue = "10") int pageSize) {
+                                                                      @RequestParam(defaultValue = "10") @Max(100) int pageSize) {
         return ApiResponse.ok(service.creatorVideos(require(c), status, page, pageSize));
     }
 
     @GetMapping("/creator/dashboard")
     public ApiResponse<Map<String, Object>> dashboard(@AuthenticationPrincipal CurrentUser c,
-                                                      @RequestParam(defaultValue = "30") int days) {
+                                                      @RequestParam(defaultValue = "30") @Max(90) int days) {
         return ApiResponse.ok(service.dashboard(require(c), days));
     }
 

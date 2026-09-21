@@ -16,6 +16,7 @@ public class TranscodeWorker {
     public void process() {
         List<Long> ids = jdbc.query("SELECT DISTINCT video_id FROM transcode_tasks WHERE status='RUNNING' ORDER BY video_id LIMIT 8",
             (rs, row) -> rs.getLong(1));
-        ids.forEach(id -> { try { uploads.progress(id); } catch (RuntimeException ignored) { /* a failed task is reported by the progress endpoint */ } });
+        // 推进只发生在这里：对外接口（GET .../progress）是只读的，不会改状态。
+        ids.forEach(id -> { try { uploads.advance(id); } catch (RuntimeException ignored) { /* a failed task is reported by the progress endpoint */ } });
     }
 }

@@ -36,9 +36,19 @@ export function TopNav() {
   const inputWrapRef = useRef<HTMLDivElement>(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
 
-  const { status, user, logout } = useAuthStore();
+  /*
+   * 逐字段订阅而非解构整个 store：解构 `useAuthStore()` / `useUiStore()` 会让顶栏
+   * 订阅 store 的任意变化（例如无关的 toast、抽屉状态），造成整块重渲染。
+   */
+  const status = useAuthStore((s) => s.status);
+  const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const unread = useNotificationStore((s) => s.unreadCount);
-  const { theme, resolvedTheme, setTheme, toggleSidebar, setMobileDrawer } = useUiStore();
+  const theme = useUiStore((s) => s.theme);
+  const resolvedTheme = useUiStore((s) => s.resolvedTheme);
+  const setTheme = useUiStore((s) => s.setTheme);
+  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
+  const setMobileDrawer = useUiStore((s) => s.setMobileDrawer);
   const openConfirm = useUiStore((s) => s.openConfirm);
   const isLogin = status === 'authenticated';
 

@@ -61,7 +61,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/videos/*/view").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/v1/comments/*/replies", "/api/v1/categories",
                                 "/api/v1/videos/**", "/api/v1/users/**", "/api/v1/feeds/**",
-                                "/api/v1/notifications/unread-count", "/api/v1/transcode/**", "/api/v1/sse/**",
+                                "/api/v1/notifications/unread-count", "/api/v1/sse/**",
+                                // 注意：/api/v1/transcode/** 刻意**不**在这里放行。
+                                // 该前缀下是转码进度查询，属于创作者自己的任务信息，需要登录。
                                 // 本地存储模式下头像等小对象的读取入口（MinIO 模式不经过这里）
                                 "/api/v1/media/**").permitAll()
                         .anyRequest().authenticated())

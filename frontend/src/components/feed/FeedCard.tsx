@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Heart, MessageCircle, MoreHorizontal, Repeat2, Trash2 } from 'lucide-react';
+import { Heart, ImageOff, MessageCircle, MoreHorizontal, Repeat2, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { copyText } from '@/lib/clipboard';
 import { formatCount, formatRelative } from '@/lib/format';
@@ -22,6 +22,8 @@ export interface FeedCardProps {
 export function FeedCard({ post, detail, onDelete, onRepost, className }: FeedCardProps) {
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState(false);
+  /** 加载失败的媒体 id：降级为占位块，避免九宫格里出现浏览器破图图标。 */
+  const [failedMedia, setFailedMedia] = useState<Set<number>>(() => new Set());
   const likeMutation = useToggleFeedLike();
   const openConfirm = useUiStore((s) => s.openConfirm);
   const toast = useUiStore((s) => s.toast);
@@ -163,13 +165,20 @@ export function FeedCard({ post, detail, onDelete, onRepost, className }: FeedCa
                 className="relative overflow-hidden bg-surface-2"
                 style={{ aspectRatio: images.length === 1 ? '16/10' : '1/1' }}
               >
-                <img
-                  src={item.thumbUrl ?? item.url}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  className="size-full object-cover transition-transform duration-300 hover:scale-[1.03]"
-                />
+                {failedMedia.has(item.id) ? (
+                  <div className="flex size-full items-center justify-center text-fg-subtle">
+                    <ImageOff className="size-5" aria-hidden />
+                  </div>
+                ) : (
+                  <img
+                    src={item.thumbUrl ?? item.url}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onError={() => setFailedMedia((prev) => new Set(prev).add(item.id))}
+                    className="size-full object-cover transition-transform duration-300 hover:scale-[1.03]"
+                  />
+                )}
               </button>
             ))}
           </div>

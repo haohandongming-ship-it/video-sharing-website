@@ -19,7 +19,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest @AutoConfigureMockMvc @ActiveProfiles("dev")
-@Import(CountingDataSourceConfiguration.class)
+@Import({CountingDataSourceConfiguration.class, SynchronousAsyncTestConfiguration.class})
 class ReportRegressionTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -168,5 +168,133 @@ class ReportRegressionTest {
         assertEquals("报告回归：第 3 秒出现问题",jdbc.queryForObject("SELECT description FROM reports WHERE id=?",String.class,id));
         mvc.perform(get("/api/v1/admin/reports").header("Authorization","Bearer "+login("admin")))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.items[?(@.id=="+id+")].description").value(org.hamcrest.Matchers.hasItem("报告回归：第 3 秒出现问题")));
+    }
+
+    /**
+     * 回归 SEC-01：GET /api/v1/transcode/{id}/progress 必须「只读 + 需鉴权 + 限定属主」。
+     *
+     * <p>修复前该接口匿名可达，且会在 GET 里推进 {@code transcode_tasks.progress}，
+     * 任何匿名调用者都能把任意视频一路推过转码门槛（实测 5 → 25 → 45 → 65 → SUCCESS）。
+     * 现在状态推进只在 {@code TranscodeWorker} 的定时任务里发生。</p>
+     *
+     * <p>断言用的任务状态是 {@code QUEUED}：{@code TranscodeWorker} 只处理 {@code RUNNING}，
+     * 因此这条任务的进度若发生变化，必定来自被测接口本身，断言不受定时任务干扰。</p>
+     */
+    @Test void transcodeProgressIsReadOnlyAndScopedToOwner() throws Exception {
+        long owner=jdbc.queryForObject("SELECT id FROM users WHERE username='laowang'",Long.class);
+        Long fileId=jdbc.queryForObject("SELECT id FROM files WHERE object_key LIKE 'demo/%' ORDER BY id LIMIT 1",Long.class);
+        jdbc.update("INSERT INTO videos(user_id,source_file_id,title,description,duration,file_size,video_type,category_id,visibility,status,download_enabled,published_at,created_at,updated_at) VALUES(?,?,?,?,15,1024,'LONG',1,'PUBLIC','PROCESSING',true,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",
+                owner,fileId,"转码进度越权探针","回归 SEC-01");
+        long videoId=jdbc.queryForObject("SELECT MAX(id) FROM videos",Long.class);
+        jdbc.update("INSERT INTO transcode_tasks(video_id,quality,status,progress) VALUES(?,?,?,?)",videoId,"720p","QUEUED",5);
+
+        // 1) 匿名访问必须被拒绝，且进度不变
+        mvc.perform(get("/api/v1/transcode/"+videoId+"/progress")).andExpect(status().isUnauthorized());
+        assertEquals(5,jdbc.queryForObject("SELECT progress FROM transcode_tasks WHERE video_id=?",Integer.class,videoId));
+
+        // 2) 非属主的普通用户必须 403，且进度不变
+        mvc.perform(get("/api/v1/transcode/"+videoId+"/progress").header("Authorization","Bearer "+login("newbie")))
+                .andExpect(status().isForbidden());
+        assertEquals(5,jdbc.queryForObject("SELECT progress FROM transcode_tasks WHERE video_id=?",Integer.class,videoId));
+
+        // 3) 属主可读；重复读取仍不得推进进度
+        String token=login("laowang");
+        for(int i=0;i<3;i++) {
+            mvc.perform(get("/api/v1/transcode/"+videoId+"/progress").header("Authorization","Bearer "+token))
+                    .andExpect(status().isOk()).andExpect(jsonPath("$.data.progress").value(5));
+        }
+        assertEquals(5,jdbc.queryForObject("SELECT progress FROM transcode_tasks WHERE video_id=?",Integer.class,videoId));
+
+        // 4) 管理员（非属主）可读，用于审核场景
+        mvc.perform(get("/api/v1/transcode/"+videoId+"/progress").header("Authorization","Bearer "+login("admin")))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * 回归 SEC-02：登出必须真正吊销 Access Token，即使没有 Redis。
+     *
+     * <p>此前吊销检查在 Redis 不可用时直接返回「未吊销」（fail-open），登出接口虽然返回
+     * 成功，令牌却仍然可用。现在非生产环境有本地降级黑名单，登出后同一令牌立即失效；
+     * 生产环境则保持 fail-closed（无法确认吊销状态即拒绝请求）。</p>
+     */
+    @Test void logoutRevokesTheAccessTokenWithoutRedis() throws Exception {
+        String token=login("laowang");
+        mvc.perform(get("/api/v1/users/me").header("Authorization","Bearer "+token))
+                .andExpect(status().isOk());
+
+        mvc.perform(post("/api/v1/auth/logout").header("Authorization","Bearer "+token)
+                        .header("X-Requested-With","XMLHttpRequest"))
+                .andExpect(status().isOk());
+
+        // 登出后同一令牌必须被拒绝（修复前此处仍为 200）。
+        mvc.perform(get("/api/v1/users/me").header("Authorization","Bearer "+token))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/v1/notifications").header("Authorization","Bearer "+token))
+                .andExpect(status().isUnauthorized());
+
+        // 吊销按 jti 生效，不应把该账号后续登录也一并锁死。
+        String fresh=login("laowang");
+        mvc.perform(get("/api/v1/users/me").header("Authorization","Bearer "+fresh))
+                .andExpect(status().isOk());
+    }
+
+    /**
+     * 回归 SEC-06：MVC 层之外的错误也必须走项目统一响应信封。
+     *
+     * <p>此前这类错误落到 Spring Boot 默认的 {@code /error}，输出
+     * {@code {"timestamp","status","error","path"}} —— 客户端无法用统一信封解析，
+     * 而且错误体会回显完整请求路径。</p>
+     */
+    @Test void fallbackErrorEndpointUsesTheUnifiedEnvelope() throws Exception {
+        mvc.perform(get("/error").requestAttr(jakarta.servlet.RequestDispatcher.ERROR_STATUS_CODE, 403))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value(40301))
+                .andExpect(jsonPath("$.message").value("没有权限执行此操作"))
+                .andExpect(jsonPath("$.timestamp").exists())
+                // Spring 默认错误体的字段不得再出现：path 会回显请求路径。
+                .andExpect(jsonPath("$.path").doesNotExist())
+                .andExpect(jsonPath("$.error").doesNotExist());
+
+        mvc.perform(get("/error").requestAttr(jakarta.servlet.RequestDispatcher.ERROR_STATUS_CODE, 404))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value(40401))
+                .andExpect(jsonPath("$.message").value("资源不存在"));
+    }
+
+    /**
+     * 回归 FUN-03：分页参数的「过大」在各类列表端点上行为一致。
+     *
+     * <p>此前只有 /videos/recommend 与 /users/search 带 @Max，其余列表端点会把超大 pageSize
+     * 静默钳制后返回 200 —— 同类错误给出不同响应。现在统一为：**过大 → 400**。</p>
+     *
+     * <p>同时固化既有的另一半约定：**过小/零值仍被钳制为 200**，不因这次改动而回归。
+     * 该行为由 PlatformIntegrationTest.paginationAndMalformedInputDoNotCauseServerErrors 固化，
+     * 语义是「畸形的分页参数不该把请求打成错误」。</p>
+     */
+    @Test void oversizedPageSizeIsRejectedButUndersizedIsClamped() throws Exception {
+        for (String path : List.of("/api/v1/users/3/videos", "/api/v1/users/3/favorites",
+                "/api/v1/users/3/followers", "/api/v1/feeds", "/api/v1/videos/1/comments",
+                "/api/v1/comments/1/replies")) {
+            mvc.perform(get(path).param("pageSize", "99999")).andExpect(status().isBadRequest());
+        }
+
+        mvc.perform(get("/api/v1/feeds").param("pageSize", "-5")).andExpect(status().isOk());
+        mvc.perform(get("/api/v1/videos/1/comments").param("page", "0").param("pageSize", "-1"))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/v1/users/3/videos").param("pageSize", "100000"))
+                .andExpect(status().isBadRequest());
+    }
+
+    /**
+     * 回归 QUA-02：搜索接口的 {@code costMs} 必须是真实耗时，且建议词非空。
+     *
+     * <p>此前 {@code costMs} 硬编码为 1，而前端搜索页会把它显示成「耗时 1ms」，
+     * 等于向用户展示一个假指标。这里只断言契约（存在且 ≥1），不锁定具体数值。</p>
+     */
+    @Test void searchReportsRealElapsedTimeAndNonEmptySuggestions() throws Exception {
+        mvc.perform(get("/api/v1/videos/search").param("q", "光影"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.suggestions").isNotEmpty())
+                .andExpect(jsonPath("$.data.costMs").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
     }
 }

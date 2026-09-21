@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/cn';
 import { dayjs, formatRelative } from '@/lib/format';
+import { temporaryNumericId } from '@/lib/id';
 import { queryKeys } from '@/lib/queryKeys';
 import { useAuthStore } from '@/stores/authStore';
 import { countByType, useNotificationStore } from '@/stores/notificationStore';
@@ -424,7 +425,7 @@ function MessageSection() {
     const key = queryKeys.messages.thread(selectedId);
     const previous = client.getQueryData<DirectMessage[]>(key);
     const optimistic: DirectMessage = {
-      id: -Date.now(),
+      id: temporaryNumericId(),
       conversationId: selectedId,
       senderId: myId,
       content,

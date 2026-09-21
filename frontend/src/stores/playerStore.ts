@@ -100,6 +100,9 @@ export const usePlayerStore = create<PlayerState>()(
       clearMemory(videoId) {
         if (videoId === undefined) {
           set({ memory: {} });
+          // 进度同时以 `progress:<videoId>` 分散落盘（见 recordProgress），
+          // 只清 state 会把这些键留在设备上，登出后仍能被下一位用户读到。
+          storage.removeByPrefix('progress:');
           return;
         }
         set((state) => {

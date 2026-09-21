@@ -31,7 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 @SpringBootTest
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
-@Import(CountingDataSourceConfiguration.class)
+@Import({CountingDataSourceConfiguration.class, SynchronousAsyncTestConfiguration.class})
 class QueryCountGuardTest {
 
     private static final int[] PAGE_SIZES = {5, 40};

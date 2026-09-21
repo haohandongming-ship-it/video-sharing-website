@@ -61,6 +61,32 @@ function buildUrl(path: string, query?: Record<string, unknown>): string {
   return base.includes('?') ? `${base}&${qs}` : `${base}?${qs}`;
 }
 
+/**
+ * 目标是否可信到可以附加凭证（Authorization 头与 Cookie）。
+ *
+ * <p>相对路径走同源反代，天然可信；绝对 URL 会绕过 API_BASE_URL 前缀，
+ * 若仍无条件附加 Authorization，一旦有用户可控的路径流入，Access Token
+ * 就会被发往第三方域。因此绝对 URL 必须显式落在「本页 origin」或「配置的
+ * API origin」之内 —— 后者保证 `VITE_API_BASE_URL` 指向独立域名时依然可用。</p>
+ */
+function isTrustedApiTarget(url: string): boolean {
+  if (!/^https?:\/\//i.test(url)) return true;
+  if (typeof window === 'undefined') return false;
+  const allowed = new Set<string>([window.location.origin]);
+  if (API_BASE_URL) {
+    try {
+      allowed.add(new URL(API_BASE_URL, window.location.origin).origin);
+    } catch {
+      /* 配置非法时忽略，仅保留本页 origin */
+    }
+  }
+  try {
+    return allowed.has(new URL(url).origin);
+  } catch {
+    return false;
+  }
+}
+
 let refreshPromise: Promise<string | null> | null = null;
 
 /** 单飞刷新：并发 401 只触发一次 /auth/refresh */
@@ -138,7 +164,9 @@ async function execute<T>(path: string, options: RequestOptions = {}): Promise<T
   if (body !== undefined && !rawBody) {
     headers.set('Content-Type', 'application/json');
   }
-  if (token) headers.set('Authorization', `Bearer ${token}`);
+  // 凭证只发给可信目标：绝对 URL 指向第三方域时既不带 Token，也不带 Cookie。
+  const trusted = isTrustedApiTarget(url);
+  if (token && trusted) headers.set('Authorization', `Bearer ${token}`);
   if (idempotent && !headers.has('Idempotency-Key')) {
     headers.set('Idempotency-Key', randomId());
   }
@@ -153,8 +181,8 @@ async function execute<T>(path: string, options: RequestOptions = {}): Promise<T
     method,
     headers,
     signal,
-    // Refresh Token 走 httpOnly Cookie，跨域场景必须携带凭证
-    credentials: 'include',
+    // Refresh Token 走 httpOnly Cookie，跨域场景必须携带凭证；但只发给可信目标。
+    credentials: trusted ? 'include' : 'omit',
     body: body === undefined ? undefined : rawBody ? (body as BodyInit) : JSON.stringify(body),
   };
 

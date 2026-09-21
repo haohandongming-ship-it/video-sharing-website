@@ -64,6 +64,8 @@ export function VideoPlayer({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const countedRef = useRef(false);
   const hideTimer = useRef<number | null>(null);
+  /** 快捷键 / 状态提示的定时器句柄（见 flashHint）。 */
+  const hintTimer = useRef<number | null>(null);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [rateOpen, setRateOpen] = useState(false);
@@ -149,6 +151,29 @@ export function VideoPlayer({
     }
   }, [videoRef]);
 
+  /**
+   * 快捷键 / 状态提示：连续触发时必须撤销上一个定时器，否则旧定时器会提前把新提示清掉；
+   * 组件卸载时也要撤销，避免在已卸载的组件上 setState。
+   */
+  const flashHint = useCallback((text: string, durationMs = 900) => {
+    setShortcutHint(text);
+    if (hintTimer.current !== null) window.clearTimeout(hintTimer.current);
+    hintTimer.current = window.setTimeout(() => {
+      hintTimer.current = null;
+      setShortcutHint(null);
+    }, durationMs);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (hintTimer.current !== null) {
+        window.clearTimeout(hintTimer.current);
+        hintTimer.current = null;
+      }
+    },
+    [],
+  );
+
   const togglePip = useCallback(async () => {
     const video = videoRef.current as (HTMLVideoElement & { requestPictureInPicture?: () => Promise<unknown> }) | null;
     if (!video) return;
@@ -156,15 +181,9 @@ export function VideoPlayer({
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
       else await video.requestPictureInPicture?.();
     } catch {
-      setShortcutHint('当前浏览器不支持画中画');
-      window.setTimeout(() => setShortcutHint(null), 1800);
+      flashHint('当前浏览器不支持画中画', 1800);
     }
-  }, [videoRef]);
-
-  const flashHint = useCallback((text: string) => {
-    setShortcutHint(text);
-    window.setTimeout(() => setShortcutHint(null), 900);
-  }, []);
+  }, [videoRef, flashHint]);
 
   /* 键盘快捷键 */
   useEffect(() => {
@@ -241,6 +260,40 @@ export function VideoPlayer({
     const rect = event.currentTarget.getBoundingClientRect();
     const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
     player.seek(ratio * duration);
+  };
+
+  /**
+   * 键盘操作进度条：←/→ 与 ↑/↓ 步进 5 秒，Home/End 跳到首尾。
+   *
+   * <p>进度条声明了 {@code role="slider"} 与 {@code tabIndex=0}，屏幕阅读器会承诺它是可操作的，
+   * 因此必须真的支持键盘。播放器在 document 上也绑定了同一批快捷键，这里必须阻止冒泡，
+   * 否则一次按键会跳两次。</p>
+   */
+  const handleSeekKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (duration <= 0) return;
+    const step = 5;
+    let next: number;
+    switch (event.key) {
+      case 'ArrowRight':
+      case 'ArrowUp':
+        next = Math.min(duration, currentTime + step);
+        break;
+      case 'ArrowLeft':
+      case 'ArrowDown':
+        next = Math.max(0, currentTime - step);
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = duration;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    player.seek(next);
   };
 
   const VolumeIcon = storeMuted || storeVolume === 0 ? VolumeX : storeVolume < 0.5 ? Volume1 : Volume2;
@@ -344,6 +397,7 @@ export function VideoPlayer({
             setHoverX(event.clientX - rect.left);
           }}
           onMouseLeave={() => setHoverTime(null)}
+          onKeyDown={handleSeekKeyDown}
           role="slider"
           aria-label="播放进度"
           aria-valuemin={0}

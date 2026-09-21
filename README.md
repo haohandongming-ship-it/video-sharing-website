@@ -19,7 +19,9 @@ $env:JWT_PUBLIC_KEY_BASE64="<脚本输出的公钥行>"
 
 ```powershell
 cd backend
-mvn spring-boot:run
+# 默认 profile 是 prod（忘记配置时应当启动失败，而不是静默跑在开发配置上），
+# 因此本地开发必须显式指定 dev：
+mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 ```
 
 另开终端启动前端（默认连接真实后端）：
@@ -33,6 +35,25 @@ npm exec --yes pnpm@10.18.3 -- dev
 
 访问 `http://localhost:5173`。演示账号密码统一为 `123456`：`admin`、`moderator`、`laowang`、`newbie`。
 如果只想离线体验，可将 `frontend/.env` 中的 `VITE_USE_MOCK` 显式改为 `true`。
+
+> 演示账号快捷登录面板**只在 `VITE_USE_MOCK=true` 时渲染**，生产构建（`VITE_USE_MOCK=false`）
+> 既不会显示入口，也不会把口令打进产物；`pnpm verify` 末尾的 `verify:secrets` 会扫描产物断言这一点。
+
+### 运行 profile
+
+| profile | 用途 | 数据源 / 存储 | 安全姿态 |
+| --- | --- | --- | --- |
+| `prod`（**默认**） | 生产 | MySQL / Redis / MinIO | 安全开关全部关闭；缺密钥即启动失败 |
+| `dev` | 纯本地，零外部服务 | H2 文件库 / 本地目录 | 允许固定短信验证码 `123456`、Swagger 开启 |
+| `dev-infra` | 本地 + Docker 基础设施 | MySQL(13306) / Redis / MinIO | 同 prod 的安全姿态，仅数据源不同 |
+
+未显式指定 profile 时落在 `prod`：因为缺少 MySQL / Redis / MinIO / 密钥等环境变量而**启动失败**，
+这是刻意的 fail-fast —— 宁可起不来，也不要静默跑在开发配置上（固定短信验证码、H2、Swagger）。
+本地开发请用 `scripts/start-backend.ps1`（默认注入 `dev-infra`），或显式传 `-Dspring-boot.run.profiles=dev`。
+非 prod profile 启动时会在日志中打印醒目横幅提醒。
+
+`dev` 的固定短信验证码由 `app.auth.allow-fixed-sms-code` 控制（默认 `false`，仅 `application-dev.yml`
+打开）；任何对外可达的环境都必须保持关闭。
 
 ## 本地开发 + 真实基础设施（推荐）
 

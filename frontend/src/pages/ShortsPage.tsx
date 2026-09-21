@@ -89,6 +89,23 @@ export default function ShortsPage() {
   const longPressTimer = useRef<number | null>(null);
   const lastTap = useRef(0);
   const viewedRef = useRef<Set<number>>(new Set());
+  /** 心形粒子的清理定时器集合：卸载时统一撤销，避免在已卸载组件上 setState。 */
+  const heartTimers = useRef<Set<number>>(new Set());
+
+  /**
+   * 卸载时撤销所有待执行的手势/动画定时器。
+   *
+   * <p>{@code longPressTimer} 此前只在指针抬起/移动/离开时清除；用户按住不放直接切走页面时，
+   * 它仍会触发 `setFastForward` / `setHint`，在已卸载的组件上更新状态。</p>
+   */
+  useEffect(
+    () => () => {
+      if (longPressTimer.current !== null) window.clearTimeout(longPressTimer.current);
+      heartTimers.current.forEach((timer) => window.clearTimeout(timer));
+      heartTimers.current.clear();
+    },
+    [],
+  );
 
   const isLogin = useAuthStore((s) => s.status === 'authenticated');
   const toast = useUiStore((s) => s.toast);
@@ -270,7 +287,11 @@ export default function ShortsPage() {
         const y = rect ? event.clientY - rect.top : 0;
         const id = now;
         setHearts((prev) => [...prev, { id, x, y }]);
-        window.setTimeout(() => setHearts((prev) => prev.filter((h) => h.id !== id)), 700);
+        const timer = window.setTimeout(() => {
+          heartTimers.current.delete(timer);
+          setHearts((prev) => prev.filter((h) => h.id !== id));
+        }, 700);
+        heartTimers.current.add(timer);
         if (current && isLogin) likeVideo(current.id, true);
         lastTap.current = 0;
         return;

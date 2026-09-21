@@ -23,7 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
 // 与 QueryCountGuardTest 使用同一份上下文配置，Spring 测试上下文缓存因此只启动一次。
-@Import(CountingDataSourceConfiguration.class)
+@Import({CountingDataSourceConfiguration.class, SynchronousAsyncTestConfiguration.class})
 class PlatformIntegrationTest {
     @Autowired MockMvc mvc;
     @Autowired ObjectMapper json;
@@ -101,8 +101,11 @@ class PlatformIntegrationTest {
     @org.springframework.transaction.annotation.Transactional
     void instantUploadCreatesReviewAndAbortedUploadCannotComplete() throws Exception {
         String token=login("laowang");
-        String payload=json.writeValueAsString(java.util.Map.of("fileName","test.mp4","fileSize",20000001,
-                "sha256",String.format("%064x",1),"title","秒传回归","categoryId",1,"videoType","LONG"));
+        // SEC-13：秒传仅限同一用户复用。DevDataSeeder 最初写入的占位文件（sha256=000...001）
+        // 随后被 DevMediaRepair 替换为真实的 sample.mp4（sha256=8245...ee588）。
+        // 因此测试必须使用真实文件的哈希，才能命中 laowang 拥有的视频。
+        String payload=json.writeValueAsString(java.util.Map.of("fileName","test.mp4","fileSize",172042,
+                "sha256","824548dd035aba1607236c507ccd573fe8ac1a44ca1923f712289d48a89ee588","title","秒传回归","categoryId",1,"videoType","LONG"));
         String result=mvc.perform(post("/api/v1/uploads/init").header("Authorization","Bearer "+token)
                         .header("X-Requested-With","XMLHttpRequest").contentType(MediaType.APPLICATION_JSON).content(payload))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.data.instant").value(true))

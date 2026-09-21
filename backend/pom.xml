@@ -23,7 +23,12 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <springdoc.version>3.1.1</springdoc.version>
     <jjwt.version>0.13.0</jjwt.version>
-    <minio.version>8.5.17</minio.version>
+    <!-- 8.5.17 受 CVE-2025-59952（CVSS 8.7）影响：XML 标签值会替换系统属性/环境变量引用，
+         解析不可信响应时可泄露服务端凭据与路径。8.6.0 起修复。
+         9.x 为跨大版本，升级需先对真实 MinIO 实例回归验证，故此处停留在最新 8.x。 -->
+    <minio.version>8.6.0</minio.version>
+    <!-- 必须与 minio 传递引入的 okhttp 主版本保持一致，见下方 okhttp-jvm 依赖说明。 -->
+    <okhttp.version>5.1.0</okhttp.version>
   </properties>
 
   <dependencies>
@@ -100,6 +105,19 @@
       <groupId>io.minio</groupId>
       <artifactId>minio</artifactId>
       <version>${minio.version}</version>
+    </dependency>
+    <!--
+      minio 8.6.0 起把 okhttp 升到 5.x，而 okhttp 5.x 以 Kotlin Multiplatform 方式发布：
+      `com.squareup.okhttp3:okhttp` 构件只含 KMP 元数据（META-INF，没有 class 文件），
+      JVM 实现单独发布为 `okhttp-jvm`。Gradle 会依据模块元数据自动解析到 okhttp-jvm，
+      Maven 不会 —— 结果是 MinioClient 中签名带 `okhttp3.HttpUrl` 的方法编译报
+      「找不到 okhttp3.HttpUrl 的类文件」。因此这里必须显式补上 JVM 构件。
+      版本需与 minio 传递引入的 okhttp 主版本一致（可用 mvn dependency:tree 核对）。
+    -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp-jvm</artifactId>
+      <version>${okhttp.version}</version>
     </dependency>
 
     <!-- API documentation -->

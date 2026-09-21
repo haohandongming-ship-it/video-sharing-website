@@ -143,6 +143,16 @@ export function subscribeNotifications(options: NotificationChannelOptions): Rea
       reconnectDelay: 5_000,
       heartbeatIncoming: 10_000,
       heartbeatOutgoing: 10_000,
+      /*
+       * 每次（重）连接前重新读取 token。
+       * Access Token 只有 900 秒有效期，而 `connectHeaders` 在构造时求值一次后会被
+       * stompjs 的重连原样复用 —— 断线重连就会一直携带过期令牌，连接失败后退化成轮询，
+       * 表现为「实时通知在 token 刷新后静默失效」。
+       */
+      beforeConnect: () => {
+        const token = authBridge.getToken();
+        if (client) client.connectHeaders = token ? { Authorization: `Bearer ${token}` } : {};
+      },
       onConnect: () => {
         onStatus?.('online');
         client?.subscribe('/user/queue/notifications', (message: IMessage) => {
@@ -209,7 +219,12 @@ export function subscribeRanking(
   }
 
   try {
-    source = new EventSource(`${SSE_URL}/ranking/${type}`);
+    /*
+     * withCredentials：SSE 走平台自己的 /api/v1/sse，跨域部署（前端与 API 不同源）时
+     * 不带凭证会让 EventSource 直接被拒，表现为「榜单实时推送静默失效、只剩轮询」。
+     * 该地址来自构建期配置 VITE_SSE_URL，不接受用户输入，因此无需再做可信目标判断。
+     */
+    source = new EventSource(`${SSE_URL}/ranking/${type}`, { withCredentials: true });
     source.onmessage = (event) => {
       try {
         onMessage(JSON.parse(event.data) as SseRankingPayload);

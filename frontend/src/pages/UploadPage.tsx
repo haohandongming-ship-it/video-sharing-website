@@ -298,6 +298,20 @@ export default function UploadPage() {
   const stopRef = useRef(false);
   const loadedRef = useRef(0);
   const samplesRef = useRef<{ bytes: number; seconds: number }[]>([]);
+
+  /**
+   * 离开上传页时中止进行中的上传。
+   *
+   * <p>`cancelledRef` 此前只在「用户手动取消/停止」时置位，没有卸载清理 —— 直接切走页面
+   * 后分片仍会继续发完，白白消耗带宽与服务端存储，并留下一个无人认领的上传会话。</p>
+   */
+  useEffect(
+    () => () => {
+      cancelledRef.current = true;
+      stopRef.current = true;
+    },
+    [],
+  );
   const etagsRef = useRef<Map<number, string>>(new Map());
   const partUrlsRef = useRef<{ partNumber: number; url: string }[]>([]);
   const uploadIdRef = useRef<string | null>(null);

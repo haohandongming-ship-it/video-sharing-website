@@ -2,7 +2,9 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Filter, Search, SlidersHorizontal, X } from 'lucide-react';
 import { cn } from '@/lib/cn';
+import { SEARCH_HISTORY_KEY } from '@/lib/constants';
 import { formatCount, formatRelative } from '@/lib/format';
+import { storage } from '@/lib/storage';
 import { useCategories, useUserSearch, useVideoSearch } from '@/hooks/useApi';
 import { useUiStore } from '@/stores/uiStore';
 import {
@@ -66,13 +68,7 @@ export default function SearchPage() {
   const page = Number(params.get('page') ?? 1);
 
   const [input, setInput] = useState(q);
-  const [history, setHistory] = useState<string[]>(() => {
-    try {
-      return JSON.parse(localStorage.getItem('vs-search-history') ?? '[]') as string[];
-    } catch {
-      return [];
-    }
-  });
+  const [history, setHistory] = useState<string[]>(() => storage.get<string[]>(SEARCH_HISTORY_KEY, []));
 
   // URL 中的关键词变化时同步输入框（渲染期同步前值，避免 effect 级联渲染）
   const [prevQuery, setPrevQuery] = useState(q);
@@ -88,7 +84,7 @@ export default function SearchPage() {
     if (q.trim()) {
       setHistory((prev) => {
         const next = [q, ...prev.filter((item) => item !== q)].slice(0, 8);
-        localStorage.setItem('vs-search-history', JSON.stringify(next));
+        storage.set(SEARCH_HISTORY_KEY, next);
         return next;
       });
     }
@@ -179,7 +175,7 @@ export default function SearchPage() {
                     type="button"
                     onClick={() => {
                       setHistory([]);
-                      localStorage.removeItem('vs-search-history');
+                      storage.remove(SEARCH_HISTORY_KEY);
                     }}
                     className="text-[11px] text-fg-subtle hover:text-fg"
                   >
@@ -201,7 +197,7 @@ export default function SearchPage() {
                           event.stopPropagation();
                           setHistory((prev) => {
                             const next = prev.filter((h) => h !== item);
-                            localStorage.setItem('vs-search-history', JSON.stringify(next));
+                            storage.set(SEARCH_HISTORY_KEY, next);
                             return next;
                           });
                         }}

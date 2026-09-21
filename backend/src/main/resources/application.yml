@@ -2,9 +2,22 @@ spring:
   autoconfigure:
     exclude: org.springframework.boot.security.autoconfigure.UserDetailsServiceAutoConfiguration
   profiles:
-    default: dev
+    # 默认落在 prod：忘记设置 profile 时应当「启动失败」而不是「静默跑在开发配置上」。
+    # prod 需要 MySQL / Redis / MinIO / JWT 等环境变量，缺失即启动报错，属于期望的 fail-fast。
+    # 本地开发请显式指定 profile（推荐 scripts/start-backend.ps1，它默认注入 dev-infra）：
+    #   mvn spring-boot:run -Dspring-boot.run.profiles=dev
+    default: prod
   application:
     name: video-platform
+
+  mvc:
+    formcontent:
+      filter:
+        # 本应用不使用表单提交（请求体一律是 JSON 或 multipart），但 FormContentFilter 默认开启，
+        # 会在 DispatcherServlet 之前抢先按 x-www-form-urlencoded 解析 PUT/PATCH/DELETE 的请求体。
+        # 分片上传的二进制体因此抛出 HttpMessageNotReadableException —— 该异常发生在 MVC 层之外，
+        # 不经过 @RestControllerAdvice，最终返回 Spring 默认错误体而非项目统一信封。关闭它以消除。
+        enabled: false
 
   # Java 21 虚拟线程：请求处理从「线程池 + 排队」变成「一请求一虚拟线程」，
   # 对以 JDBC/MinIO 阻塞 IO 为主的接口可以显著提高并发吞吐。
@@ -100,9 +113,10 @@ springdoc:
 
 app:
   cors:
-    # Override with CORS_ALLOWED_ORIGIN_PATTERNS in a deployed environment.
-    # Patterns cover the private IPv4 ranges commonly assigned to a LAN client.
-    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173,http://10.*:5173,http://172.16.*:5173,http://172.17.*:5173,http://172.18.*:5173,http://172.19.*:5173,http://172.20.*:5173,http://172.21.*:5173,http://172.22.*:5173,http://172.23.*:5173,http://172.24.*:5173,http://172.25.*:5173,http://172.26.*:5173,http://172.27.*:5173,http://172.28.*:5173,http://172.29.*:5173,http://172.30.*:5173,http://172.31.*:5173,http://192.168.*:5173}
+    # SEC-08：生产环境必须显式配置允许来源，严禁使用通配符或私网范围。
+    # 默认仅允许本地开发地址；部署时通过 CORS_ALLOWED_ORIGIN_PATTERNS 覆盖。
+    # dev / dev-infra profile 会自动扩展为局域网范围（见 application-dev.yml）。
+    allowed-origin-patterns: ${CORS_ALLOWED_ORIGIN_PATTERNS:http://localhost:5173,http://127.0.0.1:5173}
   security:
     data-key-base64: ${DATA_ENCRYPTION_KEY_BASE64:}
   auth:
@@ -110,9 +124,15 @@ app:
     audience: ${JWT_AUDIENCE:video-web}
     access-ttl-seconds: 900
     refresh-ttl-seconds: 604800
+    # SEC-08：当前默认 false，因为大多数本地/局域网部署未启用 TLS。
+    # 一旦接入 HTTPS，必须置为 true，否则 Cookie 在传输中明文暴露，可被网络嗅探窃取。
+    # 该开关与 CORS 来源共同构成「生产环境安全检查清单」的前两项。
     secure-cookie: ${AUTH_SECURE_COOKIE:false}
     # 反代（nginx/compose）后面 socket 地址是代理地址，置 true 时按 X-Forwarded-For 最右侧一跳识别客户端。
     trust-proxy-headers: ${AUTH_TRUST_PROXY_HEADERS:false}
+    # 本地开发便利开关：Redis 不可用时允许用固定验证码 123456 通过短信校验。
+    # 默认关闭；**任何对外可达的环境都必须保持 false**，否则等于开放「用 123456 登录任意手机号」。
+    allow-fixed-sms-code: ${AUTH_ALLOW_FIXED_SMS_CODE:false}
     private-key-base64: ${JWT_PRIVATE_KEY_BASE64:}
     public-key-base64: ${JWT_PUBLIC_KEY_BASE64:}
   storage:
