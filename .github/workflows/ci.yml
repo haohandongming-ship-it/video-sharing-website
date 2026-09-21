@@ -119,4 +119,10 @@ jobs:
 
       - name: 后端依赖审计（OWASP dependency-check）
         working-directory: backend
-        run: mvn -B org.owasp:dependency-check-maven:check
+        # NVD API 从 2024 起强制要求 API key，无 key 直接拒绝请求。
+        # 这里只启用 OSS Index（也免费但无需 key）并跳过 NVD 实时同步，
+        # 后续若需 NVD 全量数据可在 GitHub Secrets 配置 NVD_API_KEY 后取消 skip。
+        run: |
+          mvn -B org.owasp:dependency-check-maven:check \
+            -Dnvd.dependency.check.skip=true \
+            -Dossindex.enabled=true
