@@ -9,9 +9,9 @@
 在本目录（`frontend/`）下执行：
 
 ```bash
-npm exec --yes pnpm@10.18.3 -- install --frozen-lockfile
+npm exec --yes pnpm@11.21.0 -- install --frozen-lockfile
 Copy-Item .env.example .env
-npm exec --yes pnpm@10.18.3 -- dev                  # http://localhost:5173
+npm exec --yes pnpm@11.21.0 -- dev                  # http://localhost:5173
 ```
 
 `.env.example` 默认 `VITE_USE_MOCK=false`，前端通过 Vite 代理连接本地后端；只有离线演示时才将其显式改为 `true`。

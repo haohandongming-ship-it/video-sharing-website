@@ -28,9 +28,9 @@ mvn spring-boot:run "-Dspring-boot.run.profiles=dev"
 
 ```powershell
 cd frontend
-npm exec --yes pnpm@10.18.3 -- install --frozen-lockfile
+npm exec --yes pnpm@11.21.0 -- install --frozen-lockfile
 Copy-Item .env.example .env
-npm exec --yes pnpm@10.18.3 -- dev
+npm exec --yes pnpm@11.21.0 -- dev
 ```
 
 访问 `http://localhost:5173`。演示账号密码统一为 `123456`：`admin`、`moderator`、`laowang`、`newbie`。
@@ -38,6 +38,9 @@ npm exec --yes pnpm@10.18.3 -- dev
 
 > 演示账号快捷登录面板**只在 `VITE_USE_MOCK=true` 时渲染**，生产构建（`VITE_USE_MOCK=false`）
 > 既不会显示入口，也不会把口令打进产物；`pnpm verify` 末尾的 `verify:secrets` 会扫描产物断言这一点。
+>
+> 生产构建时 Vite 自动加载 `frontend/.env.production`（已提交到仓库，内容 `VITE_USE_MOCK=false`），
+> 优先级高于本地 `.env`，因此无需担心本地开发配置意外泄漏到产物。
 
 ### 运行 profile
 
@@ -160,7 +163,7 @@ docker compose --env-file .env up --build
 
 ```powershell
 cd backend; mvn test          # 需要 JDK 21：29 项测试（含 N+1 查询次数护栏与测试报告回归）
-cd frontend; npm exec --yes pnpm@10.18.3 -- verify
+cd frontend; npm exec --yes pnpm@11.21.0 -- verify
 ```
 
 前后端都启动后，可再跑两个端到端门禁（结果即验收证据）：
