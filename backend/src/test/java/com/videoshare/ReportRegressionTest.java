@@ -34,7 +34,7 @@ class ReportRegressionTest {
         var result=mvc.perform(post("/api/v1/auth/login").header("X-Requested-With","XMLHttpRequest")
                 .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("account",account,"password",password,"grantType","PASSWORD"))))
                 .andExpect(status().isOk()).andExpect(cookie().httpOnly("video_media",true)).andReturn();
-        return json.readTree(result.getResponse().getContentAsString()).at("/data/accessToken").asText();
+        return json.readTree(result.getResponse().getContentAsString()).at("/data/accessToken").asString();
     }
 
     @Test void invalidParametersAreClientErrors() throws Exception {
